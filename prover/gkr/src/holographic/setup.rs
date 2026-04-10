@@ -146,16 +146,16 @@ impl ExpSerde for LayerVerifyingEntry {
         let n_z = u64::deserialize_from(&mut reader)? as usize;
         let n_x = u64::deserialize_from(&mut reader)? as usize;
         let has_mul = u8::deserialize_from(&mut reader)?;
-        let mul = if has_mul == 1 {
-            Some(LayerWiringCommitment::deserialize_from(&mut reader)?)
-        } else {
-            None
+        let mul = match has_mul {
+            1 => Some(LayerWiringCommitment::deserialize_from(&mut reader)?),
+            0 => None,
+            _ => return Err(SerdeError::DeserializeError),
         };
         let has_add = u8::deserialize_from(&mut reader)?;
-        let add = if has_add == 1 {
-            Some(LayerWiringCommitment::deserialize_from(&mut reader)?)
-        } else {
-            None
+        let add = match has_add {
+            1 => Some(LayerWiringCommitment::deserialize_from(&mut reader)?),
+            0 => None,
+            _ => return Err(SerdeError::DeserializeError),
         };
         Ok(Self {
             layer_index,

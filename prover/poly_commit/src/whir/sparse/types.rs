@@ -340,6 +340,17 @@ impl ExpSerde for SparseMle3Commitment {
         {
             return Err(SerdeError::DeserializeError);
         }
+        // Structural invariants: nnz must be a power of two,
+        // log_nnz must match, and arity Two requires n_y == 0.
+        if nnz != 0 && (nnz & (nnz - 1)) != 0 {
+            return Err(SerdeError::DeserializeError);
+        }
+        if nnz != 0 && log_nnz != nnz.trailing_zeros() as usize {
+            return Err(SerdeError::DeserializeError);
+        }
+        if arity == SparseArity::Two && n_y != 0 {
+            return Err(SerdeError::DeserializeError);
+        }
         Ok(Self {
             arity,
             n_z,

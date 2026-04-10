@@ -40,6 +40,12 @@ pub enum VerifyError {
         which: &'static str,
         inner: SparseVerifyError,
     },
+    LayerIndexMismatch {
+        position: usize,
+        expected: usize,
+        got_proof: usize,
+        got_eval: usize,
+    },
 }
 
 impl std::fmt::Display for VerifyError {
@@ -65,6 +71,16 @@ impl std::fmt::Display for VerifyError {
             } => write!(
                 f,
                 "holographic verify: layer {layer} {which} sparse_verify rejected: {inner}"
+            ),
+            Self::LayerIndexMismatch {
+                position,
+                expected,
+                got_proof,
+                got_eval,
+            } => write!(
+                f,
+                "holographic verify: layer index mismatch at position {position}: \
+                 expected {expected}, proof has {got_proof}, eval_point has {got_eval}"
             ),
         }
     }
@@ -119,6 +135,14 @@ where
         .zip(eval_points.iter())
         .enumerate()
     {
+        if proof_entry.layer_index != layer_idx || eval_point.layer_index != layer_idx {
+            return Err(VerifyError::LayerIndexMismatch {
+                position: layer_idx,
+                expected: layer_idx,
+                got_proof: proof_entry.layer_index,
+                got_eval: eval_point.layer_index,
+            });
+        }
         verify_layer::<C, E, T>(layer_idx, vk_entry, proof_entry, eval_point, transcript)?;
     }
 

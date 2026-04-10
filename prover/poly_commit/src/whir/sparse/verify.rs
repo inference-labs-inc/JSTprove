@@ -48,7 +48,7 @@ use super::eval_sumcheck::verify_eval_sumcheck;
 use super::multiset_open::PerAxisMultisetProof;
 use super::product_argument::verify_product_circuit;
 use super::types::SparseArity;
-use super::whir_glue::{whir_verify_with_claim, WhirGlueError, WhirOpenWithClaim};
+use super::whir_glue::{whir_verify_with_claim, WhirOpenWithClaim};
 use crate::whir::types::WhirCommitment;
 
 /// Errors raised by `sparse_verify_full`.
@@ -143,19 +143,10 @@ impl std::fmt::Display for SparseVerifyError {
 
 impl std::error::Error for SparseVerifyError {}
 
-impl From<WhirGlueError> for SparseVerifyError {
-    fn from(_: WhirGlueError) -> Self {
-        // The glue layer's only failure mode is whir_verify
-        // rejection; lift it to a sparse-level error. The label
-        // is set by the caller before this conversion would fire,
-        // so this conversion only catches paths the caller didn't
-        // wrap explicitly. We default to the val slot which is
-        // the eval-claim entry point.
-        Self::WhirOpenRejected {
-            slot: ConstituentLabel::Val,
-        }
-    }
-}
+// Intentionally NO blanket From<WhirGlueError>. Each call site
+// maps the error with the correct ConstituentLabel via
+// verify_one_open's explicit .map_err. A blanket impl here
+// would lose the label context.
 
 /// Run the sparse-MLE WHIR verifier.
 ///
@@ -958,7 +949,7 @@ mod tests {
         let claimed = poly.evaluate::<GoldilocksExt4>(&z, &x, &[]);
 
         let mut p_t = Sha2T::new();
-        let whir_commitment = commitment.into_whir_commitment(layout.total_vars);
+        let whir_commitment = commitment.into_whir_commitment();
         let (full, _open_scratch) = sparse_open_full::<Goldilocks, GoldilocksExt4, Sha2T>(
             &whir_commitment,
             &combined_evals,
@@ -1022,7 +1013,7 @@ mod tests {
         let claimed = poly.evaluate::<GoldilocksExt4>(&z, &x, &y);
 
         let mut p_t = Sha2T::new();
-        let whir_commitment = commitment.into_whir_commitment(layout.total_vars);
+        let whir_commitment = commitment.into_whir_commitment();
         let (full, _open_scratch) = sparse_open_full::<Goldilocks, GoldilocksExt4, Sha2T>(
             &whir_commitment,
             &combined_evals,
@@ -1083,7 +1074,7 @@ mod tests {
         let wrong_claimed = claimed + GoldilocksExt4::ONE;
 
         let mut p_t = Sha2T::new();
-        let whir_commitment = commitment.into_whir_commitment(layout.total_vars);
+        let whir_commitment = commitment.into_whir_commitment();
         let (mut full, _) = sparse_open_full::<Goldilocks, GoldilocksExt4, Sha2T>(
             &whir_commitment,
             &combined_evals,

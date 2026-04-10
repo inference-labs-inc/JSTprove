@@ -82,6 +82,13 @@ pub enum WhirGlueError {
     /// The opening's WHIR open did not pass `whir_verify` against
     /// the supplied commitment and reconstructed eval point.
     WhirVerifyRejected,
+    /// The source constituent vector is longer than the target
+    /// hypercube `2^sub_point.len()`, so evaluation would require
+    /// truncating the source rather than zero-padding it.
+    ConstituentTooLarge {
+        source_len: usize,
+        target_len: usize,
+    },
 }
 
 impl std::fmt::Display for WhirGlueError {
@@ -94,6 +101,13 @@ impl std::fmt::Display for WhirGlueError {
                 )
             }
             Self::WhirVerifyRejected => write!(f, "whir_verify rejected the opening"),
+            Self::ConstituentTooLarge {
+                source_len,
+                target_len,
+            } => write!(
+                f,
+                "constituent source length {source_len} exceeds target hypercube {target_len}"
+            ),
         }
     }
 }
@@ -129,7 +143,10 @@ pub fn pad_sub_point<E: Field>(sub_point: &[E], target_mu: usize) -> Result<Vec<
 /// or else the function pads `source` with zeros to the next
 /// power of two and matches the padded length. The latter behavior
 /// is the one used by Phase 1d-1 / Phase 1d-4b's slot population.
-pub fn evaluate_constituent_at_sub_point<F, E>(source: &[F], sub_point: &[E]) -> E
+pub fn evaluate_constituent_at_sub_point<F, E>(
+    source: &[F],
+    sub_point: &[E],
+) -> Result<E, WhirGlueError>
 where
     F: Field,
     E: Field
@@ -138,17 +155,29 @@ where
         + std::ops::Add<F, Output = E>
         + std::ops::Mul<E, Output = E>,
 {
-    // Pad source to 2^sub_point.len() with zeros so the MLE
-    // evaluation is over the same hypercube as the layout's slot.
     let target_len = 1usize << sub_point.len();
+    if source.len() > target_len {
+        return Err(WhirGlueError::ConstituentTooLarge {
+            source_len: source.len(),
+            target_len,
+        });
+    }
     if source.len() == target_len {
         let mut scratch = vec![E::ZERO; source.len()];
-        return MultiLinearPoly::evaluate_with_buffer::<E, E>(source, sub_point, &mut scratch);
+        return Ok(MultiLinearPoly::evaluate_with_buffer::<E, E>(
+            source,
+            sub_point,
+            &mut scratch,
+        ));
     }
     let mut padded = vec![F::ZERO; target_len];
     padded[..source.len()].copy_from_slice(source);
     let mut scratch = vec![E::ZERO; padded.len()];
-    MultiLinearPoly::evaluate_with_buffer::<E, E>(&padded, sub_point, &mut scratch)
+    Ok(MultiLinearPoly::evaluate_with_buffer::<E, E>(
+        &padded,
+        sub_point,
+        &mut scratch,
+    ))
 }
 
 /// Open a single constituent of a WHIR-committed combined polynomial
@@ -337,7 +366,8 @@ mod tests {
             .collect();
 
         let v_helper =
-            evaluate_constituent_at_sub_point::<Goldilocks, GoldilocksExt4>(&source, &sub_point);
+            evaluate_constituent_at_sub_point::<Goldilocks, GoldilocksExt4>(&source, &sub_point)
+                .unwrap();
 
         let mut padded = vec![Goldilocks::ZERO; 8];
         padded[..5].copy_from_slice(&source);
@@ -364,7 +394,8 @@ mod tests {
             .map(|_| GoldilocksExt4::random_unsafe(&mut rng))
             .collect();
         let v_helper =
-            evaluate_constituent_at_sub_point::<Goldilocks, GoldilocksExt4>(&source, &sub_point);
+            evaluate_constituent_at_sub_point::<Goldilocks, GoldilocksExt4>(&source, &sub_point)
+                .unwrap();
         let mut scratch = vec![GoldilocksExt4::ZERO; source.len()];
         let v_direct = MultiLinearPoly::evaluate_with_buffer::<GoldilocksExt4, GoldilocksExt4>(
             &source,

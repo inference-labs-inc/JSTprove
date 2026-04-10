@@ -402,7 +402,7 @@ fn commitment_serialization_round_trip() {
         n_z: 5,
         n_x: 6,
         n_y: 7,
-        nnz: 100,
+        nnz: 128,
         log_nnz: 7,
         batched_root: Node::default(),
         batched_num_vars: 12,
@@ -417,4 +417,13 @@ fn commitment_serialization_round_trip() {
     assert_eq!(decoded.nnz, commitment.nnz);
     assert_eq!(decoded.log_nnz, commitment.log_nnz);
     assert_eq!(decoded.batched_num_vars, commitment.batched_num_vars);
+    // Verify the Merkle root round-trips through serialization
+    let mut root_a = Vec::new();
+    let mut root_b = Vec::new();
+    commitment.batched_root.serialize_into(&mut root_a).unwrap();
+    decoded.batched_root.serialize_into(&mut root_b).unwrap();
+    assert_eq!(
+        root_a, root_b,
+        "Merkle root must survive serialization round trip"
+    );
 }

@@ -52,6 +52,12 @@ pub fn combined_eval_point<E: Field>(
     let mut point = Vec::with_capacity(layout.total_vars);
     point.extend_from_slice(sub_point);
     let idx = constituent.index();
+    assert!(
+        idx < (1 << layout.log_k_pad),
+        "combined_eval_point: constituent index {idx} out of range for k_pad {} (log_k_pad {})",
+        1usize << layout.log_k_pad,
+        layout.log_k_pad
+    );
     for bit_pos in 0..layout.log_k_pad {
         let bit = (idx >> bit_pos) & 1;
         if bit == 1 {

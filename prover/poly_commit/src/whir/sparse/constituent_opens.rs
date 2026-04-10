@@ -845,7 +845,7 @@ mod tests {
 
         let mut p_t = Sha2T::new();
         let (full, _open_scratch) = sparse_open_full::<Goldilocks, GoldilocksExt4, Sha2T>(
-            &commitment.into_whir_commitment(layout.total_vars),
+            &commitment.into_whir_commitment(),
             &combined_evals,
             &codeword,
             &tree,
@@ -937,7 +937,7 @@ mod tests {
 
         let mut p_t = Sha2T::new();
         let (full, _open_scratch) = sparse_open_full::<Goldilocks, GoldilocksExt4, Sha2T>(
-            &commitment.into_whir_commitment(layout.total_vars),
+            &commitment.into_whir_commitment(),
             &combined_evals,
             &codeword,
             &tree,
@@ -1010,7 +1010,7 @@ mod tests {
 
         let mut p_t = Sha2T::new();
         let (full, _) = sparse_open_full::<Goldilocks, GoldilocksExt4, Sha2T>(
-            &commitment.into_whir_commitment(layout.total_vars),
+            &commitment.into_whir_commitment(),
             &combined_evals,
             &codeword,
             &tree,
@@ -1045,15 +1045,13 @@ mod tests {
 impl super::types::SparseMle3Commitment {
     /// Convert this sparse commitment to the underlying
     /// [`WhirCommitment`] view used by `whir_open` / `whir_verify`.
-    /// `total_vars` should match `self.batched_num_vars`; it is
-    /// taken as a parameter to avoid drift between the public
-    /// commitment metadata and the WHIR view.
+    /// Uses `self.batched_num_vars` directly so callers cannot
+    /// accidentally override the variable count.
     #[must_use]
-    pub fn into_whir_commitment(&self, total_vars: usize) -> WhirCommitment {
-        debug_assert_eq!(total_vars, self.batched_num_vars);
+    pub fn into_whir_commitment(&self) -> WhirCommitment {
         WhirCommitment {
             root: self.batched_root.clone(),
-            num_vars: total_vars,
+            num_vars: self.batched_num_vars,
         }
     }
 }

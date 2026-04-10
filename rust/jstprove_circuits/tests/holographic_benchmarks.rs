@@ -241,6 +241,17 @@ fn run_setup_benchmark(name: &str, circuit: Circuit<C>) {
 
     // Sanity check the VK shape
     assert_eq!(vk.layers.len(), n_layers);
+
+    // Deterministic regression guard: VK size must stay below a
+    // calibrated ceiling. If a code change bloats the VK past this
+    // threshold the benchmark fails noisily instead of silently
+    // degrading the distribution profile.
+    const MAX_VK_BYTES_PER_LAYER: f64 = 512.0;
+    let bytes_per_layer = (vk_bytes.len() as f64) / (n_layers as f64);
+    assert!(
+        bytes_per_layer <= MAX_VK_BYTES_PER_LAYER,
+        "VK size regression: {bytes_per_layer:.1} bytes/layer exceeds ceiling of {MAX_VK_BYTES_PER_LAYER} bytes/layer"
+    );
     // PK is dropped here without consumption — we just want the
     // setup wallclock plus the VK shape.
     drop(pk);

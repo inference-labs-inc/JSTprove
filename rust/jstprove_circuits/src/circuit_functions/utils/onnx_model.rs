@@ -125,7 +125,10 @@ impl CircuitParams {
     /// `self.public_inputs` is reported as a weight; weights take
     /// precedence because they are baked into the VK and shipping
     /// them as public inputs would defeat the purpose. The caller
-    /// can detect this conflict by intersecting the result vectors.
+    /// can detect this conflict by intersecting `wandb.w_and_b`
+    /// names with `self.public_inputs` *before* calling this method,
+    /// since the returned partitions are mutually exclusive
+    /// (precedence removes overlaps from the result).
     #[must_use]
     pub fn partition_input_names(&self, wandb: &WANDB) -> InputNamePartition {
         let weight_set: std::collections::HashSet<&str> =

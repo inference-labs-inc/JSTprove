@@ -141,11 +141,17 @@ pub fn read_bundle<M: DeserializeOwned>(dir: &Path) -> Result<BundleBlobs<M>> {
 
     let circuit = read_blob(dir.join(CIRCUIT_FILENAME))?;
     let witness_solver = read_blob(dir.join(WITNESS_SOLVER_FILENAME))?;
-    let vk_path = dir.join(VK_FILENAME);
-    let vk = if vk_path.exists() {
-        Some(read_blob(vk_path)?)
-    } else {
-        None
+    let vk = match read_blob(dir.join(VK_FILENAME)) {
+        Ok(bytes) => Some(bytes),
+        Err(e) => {
+            if e.downcast_ref::<std::io::Error>()
+                .is_some_and(|io| io.kind() == std::io::ErrorKind::NotFound)
+            {
+                None
+            } else {
+                return Err(e);
+            }
+        }
     };
 
     Ok(BundleBlobs {
@@ -171,11 +177,15 @@ pub fn read_circuit_blob(dir: &Path) -> Result<Vec<u8>> {
 /// Returns an error if `vk.bin` does not exist in the bundle
 /// directory or cannot be decompressed.
 pub fn read_vk_only(dir: &Path) -> Result<Vec<u8>> {
-    let path = dir.join(VK_FILENAME);
-    if !path.exists() {
-        anyhow::bail!("bundle at {} has no vk.bin", dir.display());
-    }
-    read_blob(path)
+    read_blob(dir.join(VK_FILENAME)).map_err(|e| {
+        if e.downcast_ref::<std::io::Error>()
+            .is_some_and(|io| io.kind() == std::io::ErrorKind::NotFound)
+        {
+            anyhow::anyhow!("bundle at {} has no vk.bin", dir.display())
+        } else {
+            e
+        }
+    })
 }
 
 /// Returns `true` if the bundle directory contains a `vk.bin`

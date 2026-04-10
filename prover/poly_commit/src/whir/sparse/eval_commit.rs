@@ -213,6 +213,27 @@ impl ExpSerde for SparseEvalCommitment {
         let mu_eval = u64::deserialize_from(&mut reader)? as usize;
         let batched_num_vars = u64::deserialize_from(&mut reader)? as usize;
         let root = Node::deserialize_from(&mut reader)?;
+        // Validate structural invariants so corrupted bytes fail
+        // fast rather than producing an object with nonsensical
+        // layout.
+        if degree == 0 || degree > 64 {
+            return Err(SerdeError::DeserializeError);
+        }
+        if mu_eval > super::types::SPARSE_MLE_MAX_LOG_DOMAIN {
+            return Err(SerdeError::DeserializeError);
+        }
+        // The expected total_vars for the slot geometry implied by
+        // (arity, degree, mu_eval) is mu_eval + log_k_pad where
+        // k_pad = (num_constituents * degree).next_power_of_two().
+        let num_constituents: usize = match arity {
+            SparseArity::Two => 2,
+            SparseArity::Three => 3,
+        };
+        let k_pad = (num_constituents * degree).next_power_of_two();
+        let log_k_pad = k_pad.trailing_zeros() as usize;
+        if batched_num_vars != mu_eval + log_k_pad {
+            return Err(SerdeError::DeserializeError);
+        }
         Ok(Self {
             arity,
             degree,
