@@ -260,6 +260,7 @@ fn main() {
             proof_system: ProofSystem::Remainder,
             proof_config: None,
             logup_chunk_bits: None,
+            public_inputs: Vec::new(),
         })
     } else {
         OnnxContext::get_params().ok()

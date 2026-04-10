@@ -460,6 +460,7 @@ mod tests {
             proof_system: crate::proof_system::ProofSystem::Expander,
             proof_config: None,
             logup_chunk_bits: None,
+            public_inputs: Vec::new(),
         }
     }
 
