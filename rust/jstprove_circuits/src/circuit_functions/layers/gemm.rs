@@ -81,6 +81,7 @@ pub struct GemmLayer {
     inputs: Vec<String>,
     outputs: Vec<String>,
     freivalds_reps: usize,
+    expected_weight_shape: Option<[usize; 2]>,
 }
 
 // -----------------------------------------------------------------------------
@@ -88,6 +89,7 @@ pub struct GemmLayer {
 // -----------------------------------------------------------------------------
 
 impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GemmLayer {
+    #[allow(clippy::too_many_lines)]
     fn apply(
         &self,
         api: &mut Builder,
@@ -150,7 +152,34 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GemmLayer {
         let w_name = get_input_name(&self.inputs, 1, LayerKind::Gemm, "weights")?;
         let weights_loaded =
             load_array_constants_or_get_inputs(api, input, w_name, &self.weights, LayerKind::Gemm)?;
-        let mut weights_array = promote_to_2d(weights_loaded, "weights", true)?;
+        let mut weights_array = if weights_loaded.ndim() == 1 {
+            if let Some([r, c]) = self.expected_weight_shape {
+                let len = weights_loaded.len();
+                if len != r * c {
+                    return Err(LayerError::InvalidShape {
+                        layer: LayerKind::Gemm,
+                        msg: format!(
+                            "1D weight length {len} does not match expected shape [{r}, {c}] for layer {}",
+                            self.name
+                        ),
+                    }
+                    .into());
+                }
+                weights_loaded
+                    .into_shape_with_order(ndarray::Ix2(r, c))
+                    .map_err(|_| LayerError::InvalidShape {
+                        layer: LayerKind::Gemm,
+                        msg: format!(
+                            "Failed to reshape 1D weights to [{r}, {c}] for layer {}",
+                            self.name
+                        ),
+                    })?
+            } else {
+                promote_to_2d(weights_loaded, "weights", true)?
+            }
+        } else {
+            promote_to_2d(weights_loaded, "weights", true)?
+        };
 
         // Apply transposes according to ONNX attributes.
         input_array = check_and_apply_transpose_array(
@@ -203,6 +232,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GemmLayer {
         Ok((self.outputs.clone(), out_array))
     }
 
+    #[allow(clippy::similar_names, clippy::too_many_lines)]
     fn build(
         layer: &crate::circuit_functions::utils::onnx_types::ONNXLayer,
         circuit_params: &crate::circuit_functions::utils::onnx_model::CircuitParams,
@@ -229,6 +259,33 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GemmLayer {
         let w_name = get_input_name(&layer.inputs, 1, LayerKind::Gemm, "weights")?;
         let b_name = get_input_name(&layer.inputs, 2, LayerKind::Gemm, "bias")?;
 
+        let transa: usize = get_param_or_default(&layer.name, TRANS_A, &params, Some(&0))?;
+        let transb: usize = get_param_or_default(&layer.name, TRANS_B, &params, Some(&0))?;
+
+        let expected_weight_shape: Option<[usize; 2]> = (|| {
+            let input_name = layer.inputs.first()?;
+            let a_shape = layer_context.shapes_map.get(input_name)?;
+            if a_shape.len() < 2 {
+                return None;
+            }
+            let k = if transa != 0 {
+                a_shape[a_shape.len() - 2]
+            } else {
+                *a_shape.last()?
+            };
+            let output_name = layer.outputs.first()?;
+            let out_shape = layer_context.shapes_map.get(output_name)?;
+            let n = *out_shape.last()?;
+            if k == 0 || n == 0 {
+                return None;
+            }
+            if transb != 0 {
+                Some([n, k])
+            } else {
+                Some([k, n])
+            }
+        })();
+
         let (weights, bias) = if layer_context.weights_as_inputs {
             (None, None)
         } else {
@@ -240,28 +297,14 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GemmLayer {
                     .filter(|s| s.len() == 2 && s.iter().product::<usize>() == w.len())
                     .cloned()
                     .or_else(|| {
-                        let input_name = layer.inputs.first()?;
-                        let a_shape = layer_context.shapes_map.get(input_name)?;
-                        if a_shape.len() < 2 {
-                            return None;
-                        }
-                        let trans_a: usize =
-                            get_param_or_default(&layer.name, TRANS_A, &params, Some(&0)).ok()?;
-                        let trans_b: usize =
-                            get_param_or_default(&layer.name, TRANS_B, &params, Some(&0)).ok()?;
-                        let k = if trans_a != 0 {
-                            a_shape[a_shape.len() - 2]
+                        if let Some([r, c]) = expected_weight_shape {
+                            if r * c == w.len() {
+                                Some(vec![r, c])
+                            } else {
+                                None
+                            }
                         } else {
-                            *a_shape.last()?
-                        };
-                        if k == 0 || w.len() % k != 0 {
-                            return None;
-                        }
-                        let n = w.len() / k;
-                        if trans_b != 0 {
-                            Some(vec![n, k])
-                        } else {
-                            Some(vec![k, n])
+                            None
                         }
                     });
                 if let Some(shape) = target_shape {
@@ -271,6 +314,15 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GemmLayer {
                             layer: LayerKind::Gemm,
                             msg: format!("reshaping 1D weight '{w_name}' to {shape:?}: {e}"),
                         })?;
+                } else if let Some([r, c]) = expected_weight_shape {
+                    return Err(LayerError::InvalidShape {
+                        layer: LayerKind::Gemm,
+                        msg: format!(
+                            "1D weight '{w_name}' length {} does not match expected [{r}, {c}]",
+                            w.len()
+                        ),
+                    }
+                    .into());
                 }
             }
             (
@@ -289,11 +341,12 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GemmLayer {
             scaling: circuit_params.scale_exponent.into(),
             alpha: get_param_or_default(&layer.name, ALPHA, &params, Some(&1.0))?,
             beta: get_param_or_default(&layer.name, BETA, &params, Some(&1.0))?,
-            transa: get_param_or_default(&layer.name, TRANS_A, &params, Some(&0))?,
-            transb: get_param_or_default(&layer.name, TRANS_B, &params, Some(&0))?,
+            transa,
+            transb,
             inputs: layer.inputs.clone(),
             outputs: layer.outputs.clone(),
             freivalds_reps,
+            expected_weight_shape,
         };
         Ok(Box::new(gemm))
     }

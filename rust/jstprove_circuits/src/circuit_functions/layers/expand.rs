@@ -55,28 +55,20 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ExpandLayer {
         let out_rank = self.output_shape.len();
         let in_rank = x_input.ndim();
 
-        debug_assert!(
-            in_rank <= out_rank,
-            "shape inference invariant violated: in_rank={in_rank}, out_rank={out_rank}"
-        );
+        if in_rank > out_rank {
+            return Err(LayerError::InvalidShape {
+                layer: LayerKind::Expand,
+                msg: format!(
+                    "input rank {in_rank} exceeds output rank {out_rank}; \
+                     Expand cannot reduce dimensionality"
+                ),
+            }
+            .into());
+        }
 
         let result = match in_rank.cmp(&out_rank) {
             std::cmp::Ordering::Greater => {
-                let in_shape = x_input.shape();
-                let offset = in_rank - out_rank;
-                let mut merged = Vec::with_capacity(in_rank);
-                merged.extend_from_slice(&in_shape[..offset]);
-                for (i, &out_d) in self.output_shape.iter().enumerate() {
-                    let in_d = in_shape[offset + i];
-                    merged.push(if in_d == 1 { out_d } else { in_d });
-                }
-                x_input
-                    .broadcast(IxDyn(&merged))
-                    .ok_or_else(|| LayerError::InvalidShape {
-                        layer: LayerKind::Expand,
-                        msg: format!("cannot broadcast shape {in_shape:?} to {merged:?}"),
-                    })?
-                    .into_owned()
+                unreachable!()
             }
             std::cmp::Ordering::Less => {
                 let mut padded_input_shape = vec![1usize; out_rank];

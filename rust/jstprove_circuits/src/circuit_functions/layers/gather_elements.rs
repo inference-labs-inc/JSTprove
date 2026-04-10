@@ -8,7 +8,7 @@ use crate::circuit_functions::{
     CircuitError,
     gadgets::LogupRangeCheckContext,
     layers::{LayerError, LayerKind, layer_ops::LayerOp},
-    utils::onnx_model::{extract_params, get_param_or_default, get_w_or_b},
+    utils::onnx_model::{extract_params, get_param_or_default, get_w_or_b_or_constant},
 };
 
 #[derive(Debug)]
@@ -166,7 +166,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GatherElementsLayer
         };
 
         let indices_array: ndarray::ArrayD<i64> =
-            get_w_or_b(layer_context.w_and_b_map, indices_name).map_err(|e| LayerError::Other {
+            get_w_or_b_or_constant(layer_context, indices_name).map_err(|e| LayerError::Other {
                 layer: LayerKind::GatherElements,
                 msg: format!(
                     "GatherElements indices '{indices_name}' must be compile-time constant: {e}"

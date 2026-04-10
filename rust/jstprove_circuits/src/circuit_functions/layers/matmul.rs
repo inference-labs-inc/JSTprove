@@ -483,12 +483,14 @@ mod tests {
         };
         let w_and_b_map: HashMap<String, &ONNXLayer> = HashMap::new();
         let n_bits_config = HashMap::new();
+        let constants_map = HashMap::new();
         let ctx = BuildLayerContext {
             w_and_b_map: &w_and_b_map,
             shapes_map,
             n_bits_config: &n_bits_config,
             default_n_bits: default_n_bits_for_config::<GoldilocksConfig>(),
             weights_as_inputs: true,
+            constants_map: &constants_map,
         };
         <MatMulLayer as LayerOp<GoldilocksConfig, TestBuilder>>::build(
             &layer,
