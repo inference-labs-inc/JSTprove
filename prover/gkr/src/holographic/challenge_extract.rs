@@ -46,6 +46,13 @@ pub fn extract_gkr_layer_challenges<Cfg: GKREngine>(
 where
     Cfg::FieldConfig: FieldEngine,
 {
+    if proving_time_mpi_size == 0
+        || !proving_time_mpi_size.is_power_of_two()
+        || proving_time_mpi_size > i32::MAX as usize
+    {
+        return None;
+    }
+
     let mut transcript = Cfg::TranscriptConfig::new();
     let mut cursor = Cursor::new(&proof.bytes);
 
@@ -124,45 +131,47 @@ where
         use crate::verify_sumcheck_step;
         use sumcheck::{SUMCHECK_GKR_DEGREE, SUMCHECK_GKR_SIMD_MPI_DEGREE};
 
-        let mut verified = true;
         for _i_var in 0..var_num {
-            verified &= verify_sumcheck_step::<Cfg::FieldConfig>(
+            if !verify_sumcheck_step::<Cfg::FieldConfig>(
                 &mut cursor,
                 SUMCHECK_GKR_DEGREE,
                 &mut transcript,
                 &mut sum,
                 &mut rx,
                 &sp,
-            );
+            ) {
+                return None;
+            }
         }
         GKRVerifierHelper::set_rx(&rx, &mut sp);
 
         for _i_var in 0..simd_var_num {
-            verified &= verify_sumcheck_step::<Cfg::FieldConfig>(
+            if !verify_sumcheck_step::<Cfg::FieldConfig>(
                 &mut cursor,
                 SUMCHECK_GKR_SIMD_MPI_DEGREE,
                 &mut transcript,
                 &mut sum,
                 &mut r_simd_xy,
                 &sp,
-            );
+            ) {
+                return None;
+            }
         }
         GKRVerifierHelper::set_r_simd_xy(&r_simd_xy, &mut sp);
 
         for _i_var in 0..proving_time_mpi_size.trailing_zeros() {
-            verified &= verify_sumcheck_step::<Cfg::FieldConfig>(
+            if !verify_sumcheck_step::<Cfg::FieldConfig>(
                 &mut cursor,
                 SUMCHECK_GKR_SIMD_MPI_DEGREE,
                 &mut transcript,
                 &mut sum,
                 &mut r_mpi_xy,
                 &sp,
-            );
+            ) {
+                return None;
+            }
         }
         GKRVerifierHelper::set_r_mpi_xy(&r_mpi_xy, &mut sp);
-        if !verified {
-            return None;
-        }
 
         let vx_claim =
             <Cfg::FieldConfig as FieldEngine>::ChallengeField::deserialize_from(&mut cursor)
@@ -174,17 +183,16 @@ where
         let (vy_claim, eval_mul) = if !layer.structure_info.skip_sumcheck_phase_two {
             ry = Some(vec![]);
             for _i_var in 0..var_num {
-                verified &= verify_sumcheck_step::<Cfg::FieldConfig>(
+                if !verify_sumcheck_step::<Cfg::FieldConfig>(
                     &mut cursor,
                     SUMCHECK_GKR_DEGREE,
                     &mut transcript,
                     &mut sum,
                     ry.as_mut().unwrap(),
                     &sp,
-                );
-            }
-            if !verified {
-                return None;
+                ) {
+                    return None;
+                }
             }
             GKRVerifierHelper::set_ry(ry.as_ref().unwrap(), &mut sp);
 
@@ -265,7 +273,11 @@ pub fn build_eval_points_from_challenges<F: FieldEngine>(
 
         let rz = ch.rz_0.clone();
         let rx = ch.rx.clone();
-        let ry = ch.ry.clone().unwrap_or_default();
+        let ry = if pk_layer.mul.is_some() {
+            ch.ry.clone()?
+        } else {
+            ch.ry.clone().unwrap_or_default()
+        };
 
         let mul_claim = if let Some(ref mul_wiring) = pk_layer.mul {
             mul_wiring.poly.evaluate::<F::ChallengeField>(&rz, &rx, &ry)
