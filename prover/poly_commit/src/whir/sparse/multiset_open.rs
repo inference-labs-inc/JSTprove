@@ -305,10 +305,10 @@ where
     let (ws_root, ws_proof) = prove_product_circuit(&ws_leaves, transcript);
     let (audit_root, audit_proof) = prove_product_circuit(&audit_leaves, transcript);
 
-    debug_assert_eq!(init_root, h_init, "init product circuit root mismatch");
-    debug_assert_eq!(rs_root, h_rs, "rs product circuit root mismatch");
-    debug_assert_eq!(ws_root, h_ws, "ws product circuit root mismatch");
-    debug_assert_eq!(audit_root, h_audit, "audit product circuit root mismatch");
+    assert_eq!(init_root, h_init, "init product circuit root mismatch");
+    assert_eq!(rs_root, h_rs, "rs product circuit root mismatch");
+    assert_eq!(ws_root, h_ws, "ws product circuit root mismatch");
+    assert_eq!(audit_root, h_audit, "audit product circuit root mismatch");
 
     PerAxisMultisetProof {
         h_init,

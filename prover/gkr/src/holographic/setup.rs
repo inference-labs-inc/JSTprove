@@ -118,8 +118,10 @@ impl ExpSerde for LayerWiringCommitment {
                 .checked_shl(commitment.n_y as u32)
                 .ok_or(SerdeError::DeserializeError)?,
         };
-        let nnz = commitment.nnz.max(1);
-        let expected = SparseLayout::compute(arity, nnz, m_z, m_x, m_y);
+        if commitment.nnz == 0 {
+            return Err(SerdeError::DeserializeError);
+        }
+        let expected = SparseLayout::compute(arity, commitment.nnz, m_z, m_x, m_y);
         if mu != expected.mu
             || k_pad != expected.k_pad
             || log_k_pad != expected.log_k_pad
@@ -261,6 +263,13 @@ impl ExpSerde for LayerVerifyingEntry {
         let add_variable_coefs = deserialize_variable_coefs(&mut reader)?;
         let uni_variable_coefs = deserialize_variable_coefs(&mut reader)?;
         let const_variable_coefs = deserialize_variable_coefs(&mut reader)?;
+        if (mul.is_none() && !mul_variable_coefs.is_empty())
+            || (add.is_none() && !add_variable_coefs.is_empty())
+            || (uni.is_none() && !uni_variable_coefs.is_empty())
+            || (cst.is_none() && !const_variable_coefs.is_empty())
+        {
+            return Err(SerdeError::DeserializeError);
+        }
         Ok(Self {
             layer_index,
             n_z,
