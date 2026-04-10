@@ -2372,6 +2372,8 @@ dependencies = [
  "criterion",
  "ethnum",
  "expander_compiler",
+ "gkr",
+ "gkr_engine",
  "halo2curves 0.6.1 (git+https://github.com/PolyhedraZK/halo2curves)",
  "indicatif",
  "jstprove-io",
