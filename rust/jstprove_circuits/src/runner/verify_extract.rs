@@ -38,15 +38,27 @@ fn read_u64_le(cursor: &mut Cursor<&[u8]>) -> Result<u64, RunError> {
     Ok(u64::from_le_bytes(buf))
 }
 
+fn read_n_bytes(cursor: &mut Cursor<&[u8]>, n: usize) -> Result<Vec<u8>, RunError> {
+    let mut buf = vec![0u8; n];
+    cursor
+        .read_exact(&mut buf)
+        .map_err(|e| RunError::Deserialize(format!("witness field element ({n} bytes): {e}")))?;
+    Ok(buf)
+}
+
 fn read_32_bytes(cursor: &mut Cursor<&[u8]>) -> Result<[u8; 32], RunError> {
     let mut buf = [0u8; 32];
     cursor
         .read_exact(&mut buf)
-        .map_err(|e| RunError::Deserialize(format!("witness field element: {e}")))?;
+        .map_err(|e| RunError::Deserialize(format!("witness modulus: {e}")))?;
     Ok(buf)
 }
 
-fn biguint_from_le_bytes(bytes: &[u8; 32]) -> BigUint {
+fn element_size_from_modulus(modulus: &BigUint) -> usize {
+    if modulus.bits() <= 64 { 8 } else { 32 }
+}
+
+fn biguint_from_le_bytes(bytes: &[u8]) -> BigUint {
     BigUint::from_bytes_le(bytes)
 }
 
@@ -186,22 +198,25 @@ fn parse_public_inputs_from_witness_bytes(
         return Err(RunError::Deserialize("modulus is zero".into()));
     }
 
+    let elem_size = element_size_from_modulus(&modulus);
+
     let total_values = num_inputs.checked_add(num_public_inputs).ok_or_else(|| {
         RunError::Deserialize("num_inputs + num_public_inputs overflows usize".into())
     })?;
     let required_bytes = total_values
-        .checked_mul(32)
+        .checked_mul(elem_size)
         .ok_or_else(|| RunError::Deserialize("public input byte size overflows usize".into()))?;
     #[allow(clippy::cast_possible_truncation)]
     let remaining = data.len().saturating_sub(cursor.position() as usize);
     if remaining < required_bytes {
         return Err(RunError::Deserialize(format!(
-            "witness too short: need {required_bytes} bytes for {total_values} field elements, have {remaining}"
+            "witness too short: need {required_bytes} bytes for {total_values} \
+             field elements ({elem_size} bytes each), have {remaining}"
         )));
     }
     let mut values = Vec::with_capacity(total_values);
     for _ in 0..total_values {
-        let bytes = read_32_bytes(&mut cursor)?;
+        let bytes = read_n_bytes(&mut cursor, elem_size)?;
         values.push(biguint_from_le_bytes(&bytes));
     }
 
