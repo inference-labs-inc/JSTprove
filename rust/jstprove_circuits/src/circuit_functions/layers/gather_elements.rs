@@ -405,4 +405,52 @@ mod tests {
 
         assert_eq!(map, vec![3, 7, 0, 7]);
     }
+
+    #[test]
+    fn gather_elements_negative_indices() {
+        let data_shape = [3usize, 3];
+        let indices: [i64; 4] = [-1, -2, -3, -1];
+        let indices_shape = [2usize, 2];
+        let axis = 0;
+        let axis_len = data_shape[axis] as i64;
+
+        let mut data_strides = [1usize; 2];
+        data_strides[0] = data_shape[1];
+
+        let mut indices_strides = [1usize; 2];
+        indices_strides[0] = indices_shape[1];
+
+        let total = 4;
+        let mut map = Vec::with_capacity(total);
+        for (flat_idx, &index_val) in indices.iter().enumerate().take(total) {
+            assert!(
+                index_val >= -axis_len && index_val < axis_len,
+                "index {index_val} out of range"
+            );
+            let mut remaining = flat_idx;
+            let mut data_flat = 0usize;
+            for dim in 0..2 {
+                let coord = remaining / indices_strides[dim];
+                remaining %= indices_strides[dim];
+                if dim == axis {
+                    let resolved = if index_val < 0 {
+                        (index_val + axis_len) as usize
+                    } else {
+                        index_val as usize
+                    };
+                    data_flat += resolved * data_strides[dim];
+                } else {
+                    data_flat += coord * data_strides[dim];
+                }
+            }
+            map.push(data_flat);
+        }
+
+        // -1 → row 2, -2 → row 1, -3 → row 0, -1 → row 2
+        // Position (0,0): row 2, col 0 → flat 6
+        // Position (0,1): row 1, col 1 → flat 4
+        // Position (1,0): row 0, col 0 → flat 0
+        // Position (1,1): row 2, col 1 → flat 7
+        assert_eq!(map, vec![6, 4, 0, 7]);
+    }
 }

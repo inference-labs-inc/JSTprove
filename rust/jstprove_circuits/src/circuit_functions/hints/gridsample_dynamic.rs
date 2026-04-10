@@ -9,6 +9,8 @@ pub const GRIDSAMPLE_DYNAMIC_HINT_KEY: &str = "jstprove.gridsample_dynamic_hint"
 const NUM_CORNERS: usize = 4;
 pub const GRIDSAMPLE_DYNAMIC_OUTPUTS: usize = 1 + NUM_CORNERS + NUM_CORNERS;
 
+const MAX_EXACT_F64_SCALE: u64 = 1u64 << 53;
+
 fn i64_to_field<F: FieldArith>(v: i64) -> F {
     if v >= 0 {
         F::from_u256(U256::from(v.unsigned_abs()))
@@ -66,10 +68,11 @@ pub fn gridsample_dynamic_hint<F: FieldArith>(
     }
 
     let scale_u256 = inputs[0].to_u256();
-    let max_scale = U256::from(i64::MAX as u64);
-    if scale_u256 > max_scale || scale_u256 == U256::ZERO {
+    if scale_u256 > U256::from(MAX_EXACT_F64_SCALE) || scale_u256 == U256::ZERO {
         return Err(Error::UserError(format!(
-            "gridsample_dynamic_hint: scale {scale_u256} must be in [1, i64::MAX]"
+            "gridsample_dynamic_hint: scale {scale_u256} must be in [1, 2^53]; \
+             values above 2^53 lose integer precision when converted to f64 \
+             for coordinate normalization and weight quantization"
         )));
     }
     let scale_u64 = scale_u256.as_u64();
