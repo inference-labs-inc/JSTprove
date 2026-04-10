@@ -716,7 +716,7 @@ where
         // where codeword_len = (1 << n_vars) << WHIR_RATE_LOG.
         // For small base fields (Goldilocks, 8 bytes) with LEAF_BYTES=64 this
         // means n_vars >= log2(LEAF_BYTES / F::SIZE) - WHIR_RATE_LOG.
-        let elems_per_leaf = LEAF_BYTES / C::CircuitField::SIZE;
+        let elems_per_leaf = _base_elems_per_leaf::<C::CircuitField>();
         let min_evals = (elems_per_leaf >> WHIR_RATE_LOG).max(1).next_power_of_two();
         let min_vars = min_evals.ilog2() as usize;
         n_input_vars.max(min_vars)
