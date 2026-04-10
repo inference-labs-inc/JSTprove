@@ -27,6 +27,7 @@
 use arith::{ExtensionField, FFTField, Field, SimdField};
 use gkr_engine::{FieldEngine, Transcript};
 use poly_commit::whir::{sparse_open_full, SparseMle3FullOpening};
+use serdes::{ExpSerde, SerdeError, SerdeResult};
 
 use super::setup::{HolographicProvingKey, LayerProvingWiring};
 
@@ -59,10 +60,70 @@ pub struct LayerHolographicOpening<E: ExtensionField> {
     pub add: Option<SparseMle3FullOpening<E>>,
 }
 
+impl<E: ExtensionField> ExpSerde for LayerHolographicOpening<E> {
+    fn serialize_into<W: std::io::Write>(&self, mut writer: W) -> SerdeResult<()> {
+        (self.layer_index as u64).serialize_into(&mut writer)?;
+        let has_mul: u8 = u8::from(self.mul.is_some());
+        has_mul.serialize_into(&mut writer)?;
+        if let Some(m) = &self.mul {
+            m.serialize_into(&mut writer)?;
+        }
+        let has_add: u8 = u8::from(self.add.is_some());
+        has_add.serialize_into(&mut writer)?;
+        if let Some(a) = &self.add {
+            a.serialize_into(&mut writer)?;
+        }
+        Ok(())
+    }
+
+    fn deserialize_from<R: std::io::Read>(mut reader: R) -> SerdeResult<Self> {
+        let layer_index = u64::deserialize_from(&mut reader)? as usize;
+        let has_mul = u8::deserialize_from(&mut reader)?;
+        let mul = match has_mul {
+            1 => Some(SparseMle3FullOpening::deserialize_from(&mut reader)?),
+            0 => None,
+            _ => return Err(SerdeError::DeserializeError),
+        };
+        let has_add = u8::deserialize_from(&mut reader)?;
+        let add = match has_add {
+            1 => Some(SparseMle3FullOpening::deserialize_from(&mut reader)?),
+            0 => None,
+            _ => return Err(SerdeError::DeserializeError),
+        };
+        Ok(Self {
+            layer_index,
+            mul,
+            add,
+        })
+    }
+}
+
 /// Holographic GKR proof: per-layer wiring openings.
 #[derive(Debug, Clone)]
 pub struct HolographicProof<E: ExtensionField> {
     pub layers: Vec<LayerHolographicOpening<E>>,
+}
+
+impl<E: ExtensionField> ExpSerde for HolographicProof<E> {
+    fn serialize_into<W: std::io::Write>(&self, mut writer: W) -> SerdeResult<()> {
+        (self.layers.len() as u64).serialize_into(&mut writer)?;
+        for layer in &self.layers {
+            layer.serialize_into(&mut writer)?;
+        }
+        Ok(())
+    }
+
+    fn deserialize_from<R: std::io::Read>(mut reader: R) -> SerdeResult<Self> {
+        let n = u64::deserialize_from(&mut reader)? as usize;
+        if n > (1 << 16) {
+            return Err(SerdeError::DeserializeError);
+        }
+        let mut layers = Vec::with_capacity(n);
+        for _ in 0..n {
+            layers.push(LayerHolographicOpening::deserialize_from(&mut reader)?);
+        }
+        Ok(Self { layers })
+    }
 }
 
 /// Errors raised by the holographic GKR prover.

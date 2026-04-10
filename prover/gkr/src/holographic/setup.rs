@@ -180,6 +180,13 @@ pub struct HolographicVerifyingKey {
     pub n_layers: usize,
     /// Per-layer dimensions and wiring commitments.
     pub layers: Vec<LayerVerifyingEntry>,
+    /// Log2 of the input size (layer 0's input_vals length).
+    /// The verifier needs this for PCS parameter reconstruction.
+    pub log_input_size: usize,
+    /// Number of random coefficients in the circuit. The verifier
+    /// must advance the transcript by this many field elements to
+    /// stay in sync with the prover's `fill_rnd_coefs` call.
+    pub n_rnd_coefs: usize,
 }
 
 impl HolographicVerifyingKey {
@@ -192,6 +199,8 @@ impl ExpSerde for HolographicVerifyingKey {
     fn serialize_into<W: std::io::Write>(&self, mut writer: W) -> SerdeResult<()> {
         self.version.serialize_into(&mut writer)?;
         (self.n_layers as u64).serialize_into(&mut writer)?;
+        (self.log_input_size as u64).serialize_into(&mut writer)?;
+        (self.n_rnd_coefs as u64).serialize_into(&mut writer)?;
         for layer in &self.layers {
             layer.serialize_into(&mut writer)?;
         }
@@ -208,6 +217,8 @@ impl ExpSerde for HolographicVerifyingKey {
         if n_layers > MAX_LAYERS {
             return Err(SerdeError::DeserializeError);
         }
+        let log_input_size = u64::deserialize_from(&mut reader)? as usize;
+        let n_rnd_coefs = u64::deserialize_from(&mut reader)? as usize;
         let mut layers = Vec::with_capacity(n_layers);
         for _ in 0..n_layers {
             layers.push(LayerVerifyingEntry::deserialize_from(&mut reader)?);
@@ -216,6 +227,8 @@ impl ExpSerde for HolographicVerifyingKey {
             version,
             n_layers,
             layers,
+            log_input_size,
+            n_rnd_coefs,
         })
     }
 }
@@ -336,10 +349,14 @@ where
         pk_layers.push(pk_entry);
     }
 
+    let log_input_size = circuit.log_input_size();
+    let n_rnd_coefs = circuit.rnd_coefs.len();
     let vk = HolographicVerifyingKey {
         version: HolographicVerifyingKey::CURRENT_VERSION,
         n_layers,
         layers: vk_layers,
+        log_input_size,
+        n_rnd_coefs,
     };
     let pk = HolographicProvingKey {
         circuit,

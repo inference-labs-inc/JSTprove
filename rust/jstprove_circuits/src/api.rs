@@ -132,6 +132,60 @@ pub fn setup_holographic_vk(
 }
 
 /// # Errors
+/// Returns `RunError` on proof generation or serialization failure.
+pub fn prove_holographic(
+    config: ProofConfig,
+    circuit_bytes: &[u8],
+    witness_bytes: &[u8],
+) -> Result<Vec<u8>, RunError> {
+    use crate::runner::holographic::prove_holographic_from_bytes;
+    use expander_compiler::frontend::GoldilocksWhirPQConfig;
+
+    fn unsupported(config: ProofConfig) -> Result<Vec<u8>, RunError> {
+        Err(RunError::Unsupported(format!(
+            "{config} does not support holographic GKR prove"
+        )))
+    }
+
+    dispatch_by_proof_config(
+        config,
+        || unsupported(config),
+        || unsupported(config),
+        || unsupported(config),
+        || unsupported(config),
+        || unsupported(config),
+        || prove_holographic_from_bytes::<GoldilocksWhirPQConfig>(circuit_bytes, witness_bytes),
+    )
+}
+
+/// # Errors
+/// Returns `RunError` on verification or deserialization failure.
+pub fn verify_holographic(
+    config: ProofConfig,
+    vk_bytes: &[u8],
+    proof_bytes: &[u8],
+) -> Result<bool, RunError> {
+    use crate::runner::holographic::verify_holographic_with_vk;
+    use expander_compiler::frontend::GoldilocksWhirPQConfig;
+
+    fn unsupported(config: ProofConfig) -> Result<bool, RunError> {
+        Err(RunError::Unsupported(format!(
+            "{config} does not support holographic GKR verify"
+        )))
+    }
+
+    dispatch_by_proof_config(
+        config,
+        || unsupported(config),
+        || unsupported(config),
+        || unsupported(config),
+        || unsupported(config),
+        || unsupported(config),
+        || verify_holographic_with_vk::<GoldilocksWhirPQConfig>(vk_bytes, proof_bytes),
+    )
+}
+
+/// # Errors
 /// Returns `RunError` on witness generation failure.
 pub fn witness(
     config: ProofConfig,

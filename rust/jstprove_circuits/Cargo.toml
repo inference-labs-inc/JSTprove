@@ -33,6 +33,13 @@ jstprove-io = { path = "../jstprove_io" }
 jstprove-onnx = { path = "../jstprove_onnx" }
 jstprove-remainder = { path = "../jstprove_remainder", optional = true }
 arith.workspace = true
+circuit.workspace = true
+goldilocks.workspace = true
+poly_commit.workspace = true
+polynomials.workspace = true
+serdes.workspace = true
+sumcheck.workspace = true
+transcript.workspace = true
 tempfile = "3"
 tracing = "0.1"
 anyhow = "1"
