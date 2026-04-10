@@ -133,6 +133,17 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GatherElementsLayer
                 }
 
                 let axis_size = self.data_shape[*axis];
+                if axis_size == 0 {
+                    return Err(LayerError::InvalidShape {
+                        layer: LayerKind::GatherElements,
+                        msg: format!(
+                            "data_shape axis {axis} has size 0; \
+                             cannot gather from a zero-length dimension (data_shape={:?})",
+                            self.data_shape
+                        ),
+                    }
+                    .into());
+                }
                 let axis_size_var = api.constant(axis_size as u32);
 
                 let total_out: usize = indices_shape.iter().product();
