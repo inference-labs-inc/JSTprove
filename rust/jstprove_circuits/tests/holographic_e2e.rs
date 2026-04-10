@@ -137,6 +137,12 @@ fn random_eval_points(
                 .as_ref()
                 .map(|w| w.poly.evaluate::<GoldilocksExt4>(&uni_z, &uni_x, &[]))
                 .unwrap_or(GoldilocksExt4::ZERO);
+            let cst_z: Vec<GoldilocksExt4> = (0..n_z).map(|_| next()).collect();
+            let cst_claim = layer
+                .cst
+                .as_ref()
+                .map(|w| w.poly.evaluate::<GoldilocksExt4>(&cst_z, &[], &[]))
+                .unwrap_or(GoldilocksExt4::ZERO);
             LayerEvalPoint {
                 layer_index: layer.layer_index,
                 mul_z,
@@ -146,9 +152,11 @@ fn random_eval_points(
                 add_x,
                 uni_z,
                 uni_x,
+                cst_z,
                 mul_claim,
                 add_claim,
                 uni_claim,
+                cst_claim,
             }
         })
         .collect()

@@ -42,9 +42,11 @@ pub struct LayerEvalPoint<E: Field> {
     pub add_x: Vec<E>,
     pub uni_z: Vec<E>,
     pub uni_x: Vec<E>,
+    pub cst_z: Vec<E>,
     pub mul_claim: E,
     pub add_claim: E,
     pub uni_claim: E,
+    pub cst_claim: E,
 }
 
 /// One layer's contribution to a holographic GKR proof.
@@ -54,6 +56,7 @@ pub struct LayerHolographicOpening<E: ExtensionField> {
     pub mul: Option<SparseMle3FullOpening<E>>,
     pub add: Option<SparseMle3FullOpening<E>>,
     pub uni: Option<SparseMle3FullOpening<E>>,
+    pub cst: Option<SparseMle3FullOpening<E>>,
 }
 
 fn serialize_optional_opening<E: ExtensionField, W: std::io::Write>(
@@ -85,6 +88,7 @@ impl<E: ExtensionField> ExpSerde for LayerHolographicOpening<E> {
         serialize_optional_opening(&self.mul, &mut writer)?;
         serialize_optional_opening(&self.add, &mut writer)?;
         serialize_optional_opening(&self.uni, &mut writer)?;
+        serialize_optional_opening(&self.cst, &mut writer)?;
         Ok(())
     }
 
@@ -93,11 +97,13 @@ impl<E: ExtensionField> ExpSerde for LayerHolographicOpening<E> {
         let mul = deserialize_optional_opening(&mut reader)?;
         let add = deserialize_optional_opening(&mut reader)?;
         let uni = deserialize_optional_opening(&mut reader)?;
+        let cst = deserialize_optional_opening(&mut reader)?;
         Ok(Self {
             layer_index,
             mul,
             add,
             uni,
+            cst,
         })
     }
 }
@@ -263,11 +269,25 @@ where
             None
         };
 
+        let cst_opening = if let Some(cst_wiring) = &layer_pk.cst {
+            Some(open_layer_wiring::<C::CircuitField, E, T>(
+                cst_wiring,
+                eval_point.cst_claim,
+                &eval_point.cst_z,
+                &[],
+                &[],
+                transcript,
+            ))
+        } else {
+            None
+        };
+
         layer_openings.push(LayerHolographicOpening {
             layer_index: layer_pk.layer_index,
             mul: mul_opening,
             add: add_opening,
             uni: uni_opening,
+            cst: cst_opening,
         });
     }
 
@@ -489,6 +509,14 @@ mod tests {
                     .as_ref()
                     .map(|w| w.poly.evaluate::<GoldilocksExt4>(&uni_z, &uni_x, &[]))
                     .unwrap_or(GoldilocksExt4::ZERO);
+                let cst_z: Vec<GoldilocksExt4> = (0..n_z)
+                    .map(|_| GoldilocksExt4::random_unsafe(&mut *rng))
+                    .collect();
+                let cst_claim = layer
+                    .cst
+                    .as_ref()
+                    .map(|w| w.poly.evaluate::<GoldilocksExt4>(&cst_z, &[], &[]))
+                    .unwrap_or(GoldilocksExt4::ZERO);
                 LayerEvalPoint {
                     layer_index: layer.layer_index,
                     mul_z,
@@ -498,9 +526,11 @@ mod tests {
                     add_x,
                     uni_z,
                     uni_x,
+                    cst_z,
                     mul_claim,
                     add_claim,
                     uni_claim,
+                    cst_claim,
                 }
             })
             .collect()

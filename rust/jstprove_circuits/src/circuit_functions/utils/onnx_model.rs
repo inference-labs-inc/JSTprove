@@ -131,15 +131,20 @@ impl CircuitParams {
     /// (precedence removes overlaps from the result).
     /// # Errors
     /// Returns an error if any name in `self.public_inputs` does not
-    /// appear in `self.inputs`.
+    /// appear in `self.inputs`, or if `self.public_inputs` contains
+    /// duplicate entries.
     pub fn partition_input_names(&self, wandb: &WANDB) -> Result<InputNamePartition, String> {
         let input_name_set: std::collections::HashSet<&str> =
             self.inputs.iter().map(|io| io.name.as_str()).collect();
+        let mut seen_public = std::collections::HashSet::new();
         for name in &self.public_inputs {
             if !input_name_set.contains(name.as_str()) {
                 return Err(format!(
                     "public_inputs contains unknown input name: {name:?}"
                 ));
+            }
+            if !seen_public.insert(name.as_str()) {
+                return Err(format!("public_inputs contains duplicate entry: {name:?}"));
             }
         }
         let weight_set: std::collections::HashSet<&str> =

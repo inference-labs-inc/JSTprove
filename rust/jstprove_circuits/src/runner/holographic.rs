@@ -102,7 +102,9 @@ where
     .ok_or_else(|| RunError::Prove("GKR challenge extraction failed".to_string()))?;
 
     let eval_points =
-        gkr::holographic::build_eval_points_from_challenges(&extraction, &proving_key);
+        gkr::holographic::build_eval_points_from_challenges(&extraction, &proving_key).ok_or_else(
+            || RunError::Prove("failed to build eval points from challenges".to_string()),
+        )?;
 
     let mut holo_transcript = <C as GKREngine>::TranscriptConfig::new();
     let holographic_proof = gkr::holographic::prove::<
@@ -163,6 +165,9 @@ where
         CombinedHolographicProof::<ChallengeField<C>>::deserialize_from(Cursor::new(&*proof_data))
             .map_err(|e| RunError::Deserialize(format!("combined holographic proof: {e:?}")))?;
 
+    // Single-process verification — matches MPIConfig::prover_new()
+    // in the prove path. Multi-process holographic verification
+    // would need to extract the MPI world size from the proof or VK.
     let proving_time_mpi_size = 1usize;
 
     let mut transcript = <C as GKREngine>::TranscriptConfig::new();
@@ -505,6 +510,8 @@ where
         let uni_z = rz_0_copy.clone();
         let uni_x = rx.clone();
         let uni_claim = claims.eval_uni;
+        let cst_z = rz_0_copy;
+        let cst_claim = claims.eval_cst;
 
         per_layer_points.push(gkr::holographic::LayerEvalPoint {
             layer_index: i,
@@ -515,9 +522,11 @@ where
             add_x,
             uni_z,
             uni_x,
+            cst_z,
             mul_claim,
             add_claim,
             uni_claim,
+            cst_claim,
         });
 
         challenge = ExpanderDualVarChallenge::new(rx, ry, r_simd_xy, r_mpi_xy);

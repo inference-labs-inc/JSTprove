@@ -75,10 +75,11 @@ where
     let layer_num = circuit.layers.len();
     let mut sp = VerifierScratchPad::<Cfg::FieldConfig>::new(circuit, proving_time_mpi_size);
 
+    let output_var_num = circuit.layers.last()?.output_var_num;
     let mut challenge: ExpanderDualVarChallenge<Cfg::FieldConfig> =
         ExpanderSingleVarChallenge::sample_from_transcript(
             &mut transcript,
-            circuit.layers.last().unwrap().output_var_num,
+            output_var_num,
             proving_time_mpi_size,
         )
         .into();
@@ -123,8 +124,9 @@ where
         use crate::verify_sumcheck_step;
         use sumcheck::{SUMCHECK_GKR_DEGREE, SUMCHECK_GKR_SIMD_MPI_DEGREE};
 
+        let mut verified = true;
         for _i_var in 0..var_num {
-            verify_sumcheck_step::<Cfg::FieldConfig>(
+            verified &= verify_sumcheck_step::<Cfg::FieldConfig>(
                 &mut cursor,
                 SUMCHECK_GKR_DEGREE,
                 &mut transcript,
@@ -136,7 +138,7 @@ where
         GKRVerifierHelper::set_rx(&rx, &mut sp);
 
         for _i_var in 0..simd_var_num {
-            verify_sumcheck_step::<Cfg::FieldConfig>(
+            verified &= verify_sumcheck_step::<Cfg::FieldConfig>(
                 &mut cursor,
                 SUMCHECK_GKR_SIMD_MPI_DEGREE,
                 &mut transcript,
@@ -148,7 +150,7 @@ where
         GKRVerifierHelper::set_r_simd_xy(&r_simd_xy, &mut sp);
 
         for _i_var in 0..proving_time_mpi_size.trailing_zeros() {
-            verify_sumcheck_step::<Cfg::FieldConfig>(
+            verified &= verify_sumcheck_step::<Cfg::FieldConfig>(
                 &mut cursor,
                 SUMCHECK_GKR_SIMD_MPI_DEGREE,
                 &mut transcript,
@@ -158,6 +160,9 @@ where
             );
         }
         GKRVerifierHelper::set_r_mpi_xy(&r_mpi_xy, &mut sp);
+        if !verified {
+            return None;
+        }
 
         let vx_claim =
             <Cfg::FieldConfig as FieldEngine>::ChallengeField::deserialize_from(&mut cursor)
@@ -169,7 +174,7 @@ where
         let (vy_claim, eval_mul) = if !layer.structure_info.skip_sumcheck_phase_two {
             ry = Some(vec![]);
             for _i_var in 0..var_num {
-                verify_sumcheck_step::<Cfg::FieldConfig>(
+                verified &= verify_sumcheck_step::<Cfg::FieldConfig>(
                     &mut cursor,
                     SUMCHECK_GKR_DEGREE,
                     &mut transcript,
@@ -177,6 +182,9 @@ where
                     ry.as_mut().unwrap(),
                     &sp,
                 );
+            }
+            if !verified {
+                return None;
             }
             GKRVerifierHelper::set_ry(ry.as_ref().unwrap(), &mut sp);
 
@@ -243,7 +251,7 @@ where
 pub fn build_eval_points_from_challenges<F: FieldEngine>(
     challenges: &ChallengeExtraction<F>,
     pk: &super::setup::HolographicProvingKey<F>,
-) -> Vec<LayerEvalPoint<F::ChallengeField>> {
+) -> Option<Vec<LayerEvalPoint<F::ChallengeField>>> {
     let mut eval_points = Vec::with_capacity(pk.layers.len());
 
     let mut challenge_by_layer: std::collections::HashMap<usize, &PerLayerChallenge<F>> =
@@ -253,9 +261,7 @@ pub fn build_eval_points_from_challenges<F: FieldEngine>(
     }
 
     for pk_layer in &pk.layers {
-        let ch = challenge_by_layer
-            .get(&pk_layer.layer_index)
-            .expect("challenge extraction must cover all layers");
+        let ch = challenge_by_layer.get(&pk_layer.layer_index)?;
 
         let mul_z = ch.rz_0.clone();
         let mul_x = ch.rx.clone();
@@ -289,6 +295,15 @@ pub fn build_eval_points_from_challenges<F: FieldEngine>(
             F::ChallengeField::ZERO
         };
 
+        let cst_z = ch.rz_0.clone();
+        let cst_claim = if let Some(ref cst_wiring) = pk_layer.cst {
+            cst_wiring
+                .poly
+                .evaluate::<F::ChallengeField>(&cst_z, &[], &[])
+        } else {
+            F::ChallengeField::ZERO
+        };
+
         eval_points.push(LayerEvalPoint {
             layer_index: pk_layer.layer_index,
             mul_z,
@@ -298,11 +313,13 @@ pub fn build_eval_points_from_challenges<F: FieldEngine>(
             add_x,
             uni_z,
             uni_x,
+            cst_z,
             mul_claim,
             add_claim,
             uni_claim,
+            cst_claim,
         });
     }
 
-    eval_points
+    Some(eval_points)
 }

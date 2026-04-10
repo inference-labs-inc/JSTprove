@@ -268,6 +268,34 @@ where
         }
     }
 
+    // const wiring (cst)
+    match (&vk_entry.cst, &proof_entry.cst) {
+        (Some(vk_cst), Some(proof_cst)) => {
+            verify_one_wiring::<C, E, T>(
+                layer_idx,
+                "cst",
+                vk_cst,
+                proof_cst,
+                vk_entry.n_z,
+                0,
+                0,
+                &eval_point.cst_z,
+                &[],
+                &[],
+                eval_point.cst_claim,
+                poly_commit::whir::SparseArity::Two,
+                transcript,
+            )?;
+        }
+        (None, None) => {}
+        _ => {
+            return Err(VerifyError::LayerOpeningSchemaMismatch {
+                layer: layer_idx,
+                which: "cst",
+            });
+        }
+    }
+
     Ok(())
 }
 
@@ -452,6 +480,14 @@ mod tests {
                     .as_ref()
                     .map(|w| w.poly.evaluate::<GoldilocksExt4>(&uni_z, &uni_x, &[]))
                     .unwrap_or(GoldilocksExt4::ZERO);
+                let cst_z: Vec<GoldilocksExt4> = (0..n_z)
+                    .map(|_| GoldilocksExt4::random_unsafe(&mut *rng))
+                    .collect();
+                let cst_claim = layer
+                    .cst
+                    .as_ref()
+                    .map(|w| w.poly.evaluate::<GoldilocksExt4>(&cst_z, &[], &[]))
+                    .unwrap_or(GoldilocksExt4::ZERO);
                 LayerEvalPoint {
                     layer_index: layer.layer_index,
                     mul_z,
@@ -461,9 +497,11 @@ mod tests {
                     add_x,
                     uni_z,
                     uni_x,
+                    cst_z,
                     mul_claim,
                     add_claim,
                     uni_claim,
+                    cst_claim,
                 }
             })
             .collect()
