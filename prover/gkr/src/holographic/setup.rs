@@ -20,7 +20,8 @@ use arith::{FFTField, Field, SimdField};
 use circuit::Circuit;
 use gkr_engine::FieldEngine;
 use poly_commit::whir::{
-    sparse_commit, SparseLayout, SparseMle3, SparseMle3Commitment, SparseMleScratchPad,
+    sparse_commit_with_combined, SparseLayout, SparseMle3, SparseMle3Commitment,
+    SparseMleScratchPad,
 };
 use serdes::{ExpSerde, SerdeError, SerdeResult};
 use tree::Tree;
@@ -235,13 +236,18 @@ pub struct LayerProvingEntry<F: Field + Send + Sync + 'static> {
     pub add: Option<LayerProvingWiring<F>>,
 }
 
-/// Prover-side scratch for one wiring polynomial.
+/// Prover-side scratch for one wiring polynomial. The
+/// `combined_evals` field is the dense vector that
+/// `sparse_commit_with_combined` materialized internally; it is the
+/// thing `sparse_open_full` consumes when issuing the WHIR opens
+/// against the per-layer wiring commitment.
 pub struct LayerProvingWiring<F: Field + Send + Sync + 'static> {
     pub poly: SparseMle3<F>,
     pub layout: SparseLayout,
     pub scratch: SparseMleScratchPad<F>,
     pub tree: Tree,
     pub codeword: Vec<F>,
+    pub combined_evals: Vec<F>,
 }
 
 /// Proving key for a holographic GKR proof.
@@ -371,20 +377,9 @@ where
     };
     let layout = SparseLayout::compute(poly.arity, poly.nnz(), m_z, m_x, m_y);
 
-    let (commitment, scratch, tree, codeword) =
-        sparse_commit::<F>(&poly).map_err(|_| SetupError::SparseCommit { layer: layer_index })?;
-
-    // Re-build the combined dense vector that sparse_commit
-    // populated internally so the prover can pass it to
-    // sparse_open_full at proving time. sparse_commit doesn't
-    // expose the combined vector directly; we reconstruct it from
-    // the same recipe to avoid changing the sparse_commit return
-    // signature for now. Cost is one extra O(2^total_vars) pass
-    // per layer, paid only at setup time. Phase 2c will use
-    // _combined_evals when wiring the prove path through
-    // sparse_open_full; for now it is built and discarded so the
-    // setup output shape is forwards-compatible.
-    let _combined_evals = build_combined_evals::<F>(&poly, &scratch, &layout);
+    let (commitment, scratch, tree, codeword, combined_evals) =
+        sparse_commit_with_combined::<F>(&poly)
+            .map_err(|_| SetupError::SparseCommit { layer: layer_index })?;
 
     let proving = LayerProvingWiring {
         poly: SparseMle3 {
@@ -417,7 +412,8 @@ where
             ts_y: scratch.ts_y,
         },
         tree,
-        codeword: combined_evals_to_codeword_placeholder(codeword),
+        codeword,
+        combined_evals,
     };
 
     Ok(CommittedLayerWiring {
@@ -425,24 +421,6 @@ where
         layout,
         proving,
     })
-}
-
-fn build_combined_evals<F: Field>(
-    _poly: &SparseMle3<F>,
-    _scratch: &SparseMleScratchPad<F>,
-    _layout: &SparseLayout,
-) -> Vec<F> {
-    // Placeholder: this needs to mirror sparse_commit's internal
-    // populate_slot logic. For now we leave the combined vector
-    // empty; Phase 2c will either route through sparse_commit's
-    // tree/codeword (already returned) or call a future
-    // sparse_commit_with_combined helper that exposes the dense
-    // vector.
-    Vec::new()
-}
-
-fn combined_evals_to_codeword_placeholder<F: Field>(codeword: Vec<F>) -> Vec<F> {
-    codeword
 }
 
 #[cfg(test)]

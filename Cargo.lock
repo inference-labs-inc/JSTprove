@@ -1592,6 +1592,7 @@ dependencies = [
  "poly_commit",
  "polynomials",
  "rand 0.8.5",
+ "rand_chacha",
  "rayon",
  "serdes",
  "sha2",

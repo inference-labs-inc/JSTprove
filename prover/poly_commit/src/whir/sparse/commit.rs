@@ -214,6 +214,33 @@ impl SparseLayout {
 pub fn sparse_commit<F: FFTField + SimdField<Scalar = F>>(
     poly: &SparseMle3<F>,
 ) -> Result<(SparseMle3Commitment, SparseMleScratchPad<F>, Tree, Vec<F>), SparseMleError> {
+    let (commitment, scratch, tree, codeword, _combined) = sparse_commit_with_combined(poly)?;
+    Ok((commitment, scratch, tree, codeword))
+}
+
+/// Variant of [`sparse_commit`] that additionally returns the
+/// combined dense polynomial vector built internally during the
+/// commit. This is what `sparse_open_full` consumes — exposing it
+/// here lets the holographic GKR setup phase persist it on the
+/// proving key without re-running the populate-slot recipe.
+///
+/// All other return values are identical to [`sparse_commit`].
+///
+/// # Errors
+/// Returns [`SparseMleError`] if `poly.validate()` rejects the input.
+#[allow(clippy::type_complexity)]
+pub fn sparse_commit_with_combined<F: FFTField + SimdField<Scalar = F>>(
+    poly: &SparseMle3<F>,
+) -> Result<
+    (
+        SparseMle3Commitment,
+        SparseMleScratchPad<F>,
+        Tree,
+        Vec<F>,
+        Vec<F>,
+    ),
+    SparseMleError,
+> {
     poly.validate()?;
     let nnz = poly.nnz();
     let m_z = 1usize << poly.n_z;
@@ -350,7 +377,7 @@ pub fn sparse_commit<F: FFTField + SimdField<Scalar = F>>(
         ts_y,
     };
 
-    Ok((commitment, scratch, tree, codeword))
+    Ok((commitment, scratch, tree, codeword, combined))
 }
 
 /// Copy a constituent vector into its slot in the combined dense

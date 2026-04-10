@@ -20,9 +20,11 @@
 //! Subsequent phases (2b/2c/2d in the holographic-vk task list)
 //! layer the setup, prove, and verify routines on top.
 
+pub mod prove;
 pub mod setup;
 pub mod wiring;
 
+pub use prove::{prove, HolographicProof, LayerEvalPoint, LayerHolographicOpening, ProveError};
 pub use setup::{
     setup, HolographicProvingKey, HolographicVerifyingKey, LayerProvingEntry, LayerProvingWiring,
     LayerVerifyingEntry, LayerWiringCommitment, SetupError,

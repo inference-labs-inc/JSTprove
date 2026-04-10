@@ -42,7 +42,7 @@ mod whir_glue;
 mod tests;
 
 pub use combined_point::combined_eval_point;
-pub use commit::{sparse_commit, SparseConstituentSlot, SparseLayout};
+pub use commit::{sparse_commit, sparse_commit_with_combined, SparseConstituentSlot, SparseLayout};
 pub use constituent_opens::{
     sparse_open_full, PerAxisConstituentOpens, SparseConstituentOpens, SparseMle3FullOpening,
 };
