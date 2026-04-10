@@ -22,6 +22,7 @@
 
 pub mod prove;
 pub mod setup;
+pub mod verify;
 pub mod wiring;
 
 pub use prove::{prove, HolographicProof, LayerEvalPoint, LayerHolographicOpening, ProveError};
@@ -29,6 +30,7 @@ pub use setup::{
     setup, HolographicProvingKey, HolographicVerifyingKey, LayerProvingEntry, LayerProvingWiring,
     LayerVerifyingEntry, LayerWiringCommitment, SetupError,
 };
+pub use verify::{verify, VerifyError};
 pub use wiring::{
     extract_circuit_wiring, extract_layer_add_wiring, extract_layer_mul_wiring, CircuitWiring,
     GateKindLabel, LayerWiring, WiringExtractError,
