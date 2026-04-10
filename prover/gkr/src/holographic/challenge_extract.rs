@@ -284,10 +284,11 @@ pub fn build_eval_points_from_challenges<F: FieldEngine>(
 
         let rz = ch.rz_0.clone();
         let rx = ch.rx.clone();
-        let ry = if pk_layer.mul.is_some() {
-            ch.ry.clone()?
-        } else {
-            ch.ry.clone().unwrap_or_default()
+        let ry = match (pk_layer.mul.is_some(), &ch.ry) {
+            (true, Some(ry_val)) => ry_val.clone(),
+            (true, None) => return None, // mul wiring present but no phase-two challenge
+            (false, None) => vec![],     // no mul, no phase-two — consistent
+            (false, Some(_)) => return None, // no mul wiring but phase-two challenge present — inconsistent
         };
 
         let mul_claim = if let Some(ref mul_wiring) = pk_layer.mul {
