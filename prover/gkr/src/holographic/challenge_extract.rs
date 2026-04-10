@@ -265,7 +265,18 @@ pub fn build_eval_points_from_challenges<F: FieldEngine>(
     let mut challenge_by_layer: std::collections::HashMap<usize, &PerLayerChallenge<F>> =
         std::collections::HashMap::new();
     for ch in &challenges.layers {
+        if challenge_by_layer.contains_key(&ch.layer_index) {
+            return None; // duplicate layer_index in extraction
+        }
         challenge_by_layer.insert(ch.layer_index, ch);
+    }
+    // Every PK layer must have a matching challenge; extra
+    // challenges (layers in the extraction but not the PK) are
+    // harmless but missing ones are fatal.
+    for pk_layer in &pk.layers {
+        if !challenge_by_layer.contains_key(&pk_layer.layer_index) {
+            return None; // missing challenge for PK layer
+        }
     }
 
     for pk_layer in &pk.layers {
