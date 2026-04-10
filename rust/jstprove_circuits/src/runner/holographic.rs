@@ -3,8 +3,7 @@ use std::io::Cursor;
 use expander_compiler::expander_circuit;
 use expander_compiler::frontend::{ChallengeField, CircuitField, Config};
 use expander_compiler::gkr_engine::{
-    ExpanderPCS, FieldEngine, GKREngine, MPIConfig, MPIEngine, StructuredReferenceString,
-    Transcript,
+    ExpanderPCS, FieldEngine, GKREngine, MPIConfig, StructuredReferenceString, Transcript,
 };
 use expander_compiler::serdes::ExpSerde;
 use gkr::holographic::combined_proof::{CombinedHolographicProof, PerLayerWiringClaims};
@@ -72,14 +71,9 @@ where
     expander.layers[0].input_vals = simd_input;
     expander.public_input.clone_from(&simd_public_input);
 
-    let mpi_config = MPIConfig::prover_new();
-    if mpi_config.world_size() > 1 {
-        return Err(RunError::Prove(
-            "holographic proving requires single-process (MPI world_size == 1)".to_string(),
-        ));
-    }
+    let single_process = MPIConfig::prover_new();
 
-    let mut prover = gkr::Prover::<C>::new(mpi_config.clone());
+    let mut prover = gkr::Prover::<C>::new(single_process.clone());
     prover.prepare_mem(&expander);
 
     let (pcs_params, pcs_proving_key, _, mut pcs_scratch) = expander_pcs_init_testing_only::<
@@ -87,7 +81,7 @@ where
         <C as GKREngine>::PCSConfig,
     >(
         expander.log_input_size(),
-        &mpi_config,
+        &single_process,
     );
 
     let (claimed_v, proof) = prover.prove(
@@ -102,7 +96,7 @@ where
         &expander.public_input,
         &claimed_v,
         &proof,
-        mpi_config.world_size(),
+        1,
     )
     .ok_or_else(|| RunError::Prove("GKR challenge extraction failed".to_string()))?;
 
@@ -145,13 +139,6 @@ where
     Ok(bytes)
 }
 
-/// Verify a holographic GKR proof against a verification key.
-///
-/// Single-process only: proofs produced with MPI `world_size > 1`
-/// will fail transcript synchronization and be rejected. Neither
-/// the VK nor the proof wire format currently encodes `world_size`,
-/// so the caller is responsible for ensuring single-process proofs.
-///
 /// # Errors
 /// Returns `RunError` on verification or deserialization failure.
 #[allow(clippy::similar_names, clippy::too_many_lines)]
@@ -177,13 +164,7 @@ where
         CombinedHolographicProof::<ChallengeField<C>>::deserialize_from(Cursor::new(&*proof_data))
             .map_err(|e| RunError::Deserialize(format!("combined holographic proof: {e:?}")))?;
 
-    // Single-process verification. Multi-process holographic
-    // proofs are not yet supported; reject them explicitly.
     let proving_time_mpi_size = 1usize;
-    // TODO: when MPI support lands, read the world size from the
-    // VK or proof and set proving_time_mpi_size accordingly.
-    // For now, any proof produced with world_size > 1 will fail
-    // transcript synchronization and be rejected by the sumcheck.
 
     let mut transcript = <C as GKREngine>::TranscriptConfig::new();
     let mut gkr_cursor = Cursor::new(&combined.gkr_proof.bytes);
