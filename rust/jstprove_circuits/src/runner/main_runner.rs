@@ -2526,6 +2526,12 @@ pub fn get_args() -> clap::ArgMatches {
                 .long("onnx"),
         )
         .arg(
+            Arg::new("vk")
+                .help("Path to holographic verifying key file (vk.bin)")
+                .required(false)
+                .long("vk"),
+        )
+        .arg(
             Arg::new("quiet")
                 .help("Suppress all output")
                 .required(false)
