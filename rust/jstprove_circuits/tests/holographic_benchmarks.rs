@@ -263,11 +263,80 @@ fn benchmark_setup_lenet_shaped() {
     run_setup_benchmark("LeNet-shaped (synthetic mul/add)", lenet_shaped_circuit());
 }
 
+/// CNN 266K-shaped synthetic circuit. Approximates the compiled
+/// cifar_cnn model (265,822 params): 2 conv layers with large
+/// kernel footprints, 3 relu activations (modeled as add gates),
+/// 2 maxpool steps, and 2 fully-connected gemm layers. Per-layer
+/// gate counts are scaled up relative to the other benchmarks to
+/// reflect the ~4x larger parameter count.
+fn cnn_266k_shaped_circuit() -> Circuit<C> {
+    build_synthetic_circuit(&[
+        // conv1: 32×32×3 → 30×30×32 (large input, many mul gates)
+        LayerSpec {
+            input_var_num: 12,  // 4096
+            output_var_num: 15, // 32768
+            num_mul: 4096,
+            num_add: 4096,
+        },
+        // relu1 + maxpool1: 30×30×32 → 15×15×32
+        LayerSpec {
+            input_var_num: 15,
+            output_var_num: 13, // 8192
+            num_mul: 2048,
+            num_add: 2048,
+        },
+        // conv2: 15×15×32 → 13×13×64
+        LayerSpec {
+            input_var_num: 13,
+            output_var_num: 14, // 16384
+            num_mul: 4096,
+            num_add: 4096,
+        },
+        // relu2 + maxpool2: 13×13×64 → 6×6×64
+        LayerSpec {
+            input_var_num: 14,
+            output_var_num: 12, // 4096
+            num_mul: 2048,
+            num_add: 2048,
+        },
+        // relu3 + flatten
+        LayerSpec {
+            input_var_num: 12,
+            output_var_num: 12,
+            num_mul: 0,
+            num_add: 4096,
+        },
+        // gemm1: 2304 → 512
+        LayerSpec {
+            input_var_num: 12,
+            output_var_num: 9, // 512
+            num_mul: 2048,
+            num_add: 2048,
+        },
+        // gemm2: 512 → 10
+        LayerSpec {
+            input_var_num: 9,
+            output_var_num: 4, // 16
+            num_mul: 512,
+            num_add: 512,
+        },
+    ])
+}
+
 #[test]
 #[ignore = "benchmark — run with `cargo test --test holographic_benchmarks -- --ignored --nocapture`"]
 fn benchmark_setup_miniresnet_shaped() {
     run_setup_benchmark(
         "MiniResnet-shaped (synthetic mul/add)",
         miniresnet_shaped_circuit(),
+    );
+}
+
+#[test]
+#[ignore = "benchmark — run with `cargo test --test holographic_benchmarks -- --ignored --nocapture`"]
+fn benchmark_setup_cnn_266k_shaped() {
+    run_setup_benchmark(
+        "CNN 266K-shaped (synthetic mul/add, cifar_cnn scale)",
+        cnn_266k_shaped_circuit(),
     );
 }
