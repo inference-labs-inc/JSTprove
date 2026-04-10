@@ -33,6 +33,12 @@ pub use max_min_clip::{unconstrained_clip, unconstrained_max, unconstrained_min}
 pub mod gridsample;
 pub use gridsample::gridsample_hint;
 
+pub mod gridsample_dynamic;
+pub use gridsample_dynamic::gridsample_dynamic_hint;
+
+pub mod gather_elements;
+pub use gather_elements::gather_elements_hint;
+
 pub mod resize;
 pub use resize::resize_hint;
 
@@ -129,6 +135,10 @@ pub fn build_logup_hint_registry<F: CompilerField>() -> HintRegistry<F> {
     );
     registry.register(gelu::GELU_HINT_KEY, gelu_hint::<F>);
     registry.register(gridsample::GRIDSAMPLE_HINT_KEY, gridsample_hint::<F>);
+    registry.register(
+        gridsample_dynamic::GRIDSAMPLE_DYNAMIC_HINT_KEY,
+        gridsample_dynamic_hint::<F>,
+    );
     registry.register(resize::RESIZE_HINT_KEY, resize_hint::<F>);
     registry.register(topk::TOPK_HINT_KEY, topk_hint::<F>);
     registry.register(log::LOG_HINT_KEY, log_hint::<F>);
@@ -151,6 +161,10 @@ pub fn build_logup_hint_registry<F: CompilerField>() -> HintRegistry<F> {
     registry.register(sin::SIN_HINT_KEY, sin_hint::<F>);
     registry.register(cos::COS_HINT_KEY, cos_hint::<F>);
     registry.register(reduce_max::REDUCE_MAX_HINT_KEY, reduce_max_hint::<F>);
+    registry.register(
+        gather_elements::GATHER_ELEMENTS_HINT_KEY,
+        gather_elements_hint::<F>,
+    );
 
     registry
 }

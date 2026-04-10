@@ -23,7 +23,7 @@ use crate::circuit_functions::{
     CircuitError,
     gadgets::LogupRangeCheckContext,
     layers::{LayerError, LayerKind, layer_ops::LayerOp},
-    utils::{constants::INPUT, onnx_model::get_input_name},
+    utils::{constants::INPUT, onnx_model::get_input_name, onnx_model::get_w_or_b_or_constant},
 };
 
 // -------- Struct --------
@@ -153,30 +153,38 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ExpandLayer {
                 msg: format!("missing input shape for '{input_name}'"),
             })?;
 
-        // Verify the shape tensor (inputs[1]) is known at compile time.
         let shape_tensor_name = &layer.inputs[1];
         if !layer_context
             .shapes_map
             .contains_key(shape_tensor_name.as_str())
+            && get_w_or_b_or_constant(layer_context, shape_tensor_name).is_err()
         {
             return Err(LayerError::InvalidShape {
                 layer: LayerKind::Expand,
                 msg: format!(
-                    "shape tensor '{shape_tensor_name}' not found in shapes_map; \
+                    "shape tensor '{shape_tensor_name}' not found in shapes_map or constants; \
                      Expand requires a compile-time constant shape input"
                 ),
             }
             .into());
         }
 
-        let output_shape = layer_context
-            .shapes_map
-            .get(output_name.as_str())
-            .ok_or_else(|| LayerError::InvalidShape {
-                layer: LayerKind::Expand,
-                msg: format!("missing output shape for '{output_name}'"),
-            })?
-            .clone();
+        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+        let output_shape = if let Some(shape) = layer_context.shapes_map.get(output_name.as_str()) {
+            shape.clone()
+        } else {
+            let shape_arr =
+                get_w_or_b_or_constant(layer_context, shape_tensor_name).map_err(|e| {
+                    LayerError::InvalidShape {
+                        layer: LayerKind::Expand,
+                        msg: format!(
+                            "missing output shape for '{output_name}' and cannot resolve \
+                             shape tensor '{shape_tensor_name}': {e}"
+                        ),
+                    }
+                })?;
+            shape_arr.iter().map(|&v| v as usize).collect()
+        };
 
         Ok(Box::new(Self {
             inputs: layer.inputs.clone(),
