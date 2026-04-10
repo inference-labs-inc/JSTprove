@@ -111,6 +111,11 @@ impl<F: ExtensionField> ExpSerde for PerAxisMultisetProof<F> {
 /// Multiset-argument proof for the whole opening: one per active
 /// address axis. For arity Two, `y` is `None`; for arity Three it
 /// carries a third per-axis proof for the `y` axis.
+///
+/// `gamma_1` and `gamma_2` are Fiat-Shamir challenges derived from
+/// the transcript — they are NOT serialized. The verifier re-derives
+/// them independently. After deserialization both fields are `ZERO`;
+/// callers must never read them from a deserialized proof.
 #[derive(Debug, Clone, Default)]
 pub struct SparseMultisetOpening<F: Field> {
     pub gamma_1: F,

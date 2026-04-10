@@ -164,6 +164,7 @@ pub fn prove_product_circuit<E: ExtensionField>(
     // Trivial case: a single leaf — the root is the leaf itself and
     // there is nothing to reduce.
     if k == 0 {
+        transcript.append_field_element(&leaves[0]);
         return (leaves[0], ProductCircuitProof { layers: Vec::new() });
     }
 
@@ -313,10 +314,9 @@ pub fn verify_product_circuit<E: ExtensionField>(
     proof: &ProductCircuitProof<E>,
     transcript: &mut impl Transcript,
 ) -> Option<ProductCircuitClaim<E>> {
+    transcript.append_field_element(&claimed_root);
+
     if log_n == 0 {
-        // No layers; the root is the lone leaf and the leaf point
-        // is empty. Accept iff the proof has no layers and the
-        // claimed root is the leaf evaluation.
         if !proof.layers.is_empty() {
             return None;
         }
@@ -329,8 +329,6 @@ pub fn verify_product_circuit<E: ExtensionField>(
     if proof.layers.len() != log_n {
         return None;
     }
-
-    transcript.append_field_element(&claimed_root);
 
     let mut current_layer = log_n;
     let mut current_point: Vec<E> = Vec::new();

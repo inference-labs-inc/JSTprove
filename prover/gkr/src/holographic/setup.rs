@@ -228,9 +228,16 @@ impl ExpSerde for LayerVerifyingEntry {
     }
 
     fn deserialize_from<R: std::io::Read>(mut reader: R) -> SerdeResult<Self> {
+        const MAX_LOG_VAR: usize = 32;
         let layer_index = u64::deserialize_from(&mut reader)? as usize;
         let n_z = u64::deserialize_from(&mut reader)? as usize;
+        if n_z > MAX_LOG_VAR {
+            return Err(SerdeError::DeserializeError);
+        }
         let n_x = u64::deserialize_from(&mut reader)? as usize;
+        if n_x > MAX_LOG_VAR {
+            return Err(SerdeError::DeserializeError);
+        }
         let mul = deserialize_optional_wiring(&mut reader)?;
         let add = deserialize_optional_wiring(&mut reader)?;
         let uni = deserialize_optional_wiring(&mut reader)?;
@@ -311,6 +318,10 @@ impl ExpSerde for HolographicVerifyingKey {
             return Err(SerdeError::DeserializeError);
         }
         let n_rnd_coefs = u64::deserialize_from(&mut reader)? as usize;
+        const MAX_RND_COEFS: usize = 1 << 24;
+        if n_rnd_coefs > MAX_RND_COEFS {
+            return Err(SerdeError::DeserializeError);
+        }
         let mut layers = Vec::with_capacity(n_layers);
         for _ in 0..n_layers {
             layers.push(LayerVerifyingEntry::deserialize_from(&mut reader)?);
@@ -532,9 +543,6 @@ where
 
     let proving = LayerProvingWiring {
         poly: SparseMle3 {
-            // We move poly into proving but the SparseMle3 fields
-            // are owned by the proving entry. Clone the metadata
-            // and reuse the original vectors.
             n_z: poly.n_z,
             n_x: poly.n_x,
             n_y: poly.n_y,

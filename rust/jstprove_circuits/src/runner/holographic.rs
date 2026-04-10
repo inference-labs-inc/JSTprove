@@ -140,6 +140,13 @@ where
     Ok(bytes)
 }
 
+/// Verify a holographic GKR proof against a verification key.
+///
+/// Single-process only: proofs produced with MPI `world_size > 1`
+/// will fail transcript synchronization and be rejected. Neither
+/// the VK nor the proof wire format currently encodes `world_size`,
+/// so the caller is responsible for ensuring single-process proofs.
+///
 /// # Errors
 /// Returns `RunError` on verification or deserialization failure.
 #[allow(clippy::similar_names, clippy::too_many_lines)]
