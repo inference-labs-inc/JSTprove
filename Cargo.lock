@@ -1598,6 +1598,7 @@ dependencies = [
  "sumcheck",
  "thiserror 2.0.18",
  "transcript",
+ "tree",
  "utils",
 ]
 

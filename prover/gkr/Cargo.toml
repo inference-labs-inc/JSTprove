@@ -19,6 +19,7 @@ polynomials.workspace = true
 serdes.workspace = true
 sumcheck.workspace = true
 transcript.workspace = true
+tree.workspace = true
 utils.workspace = true
 
 ark-std.workspace = true
