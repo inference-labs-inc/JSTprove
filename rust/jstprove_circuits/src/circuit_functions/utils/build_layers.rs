@@ -20,7 +20,7 @@ const DEFAULT_N_BITS_GOLDILOCKS: usize = 31;
 #[must_use]
 pub fn default_n_bits_for_config<C: Config>() -> usize {
     match C::CONFIG_ID {
-        4 | 6 | 8 => DEFAULT_N_BITS_GOLDILOCKS,
+        4 | 6 | 8 | 9 | 10 | 11 => DEFAULT_N_BITS_GOLDILOCKS,
         _ => DEFAULT_N_BITS_BN254,
     }
 }
