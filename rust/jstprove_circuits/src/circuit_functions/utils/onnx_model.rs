@@ -129,8 +129,19 @@ impl CircuitParams {
     /// names with `self.public_inputs` *before* calling this method,
     /// since the returned partitions are mutually exclusive
     /// (precedence removes overlaps from the result).
-    #[must_use]
-    pub fn partition_input_names(&self, wandb: &WANDB) -> InputNamePartition {
+    /// # Errors
+    /// Returns an error if any name in `self.public_inputs` does not
+    /// appear in `self.inputs`.
+    pub fn partition_input_names(&self, wandb: &WANDB) -> Result<InputNamePartition, String> {
+        let input_name_set: std::collections::HashSet<&str> =
+            self.inputs.iter().map(|io| io.name.as_str()).collect();
+        for name in &self.public_inputs {
+            if !input_name_set.contains(name.as_str()) {
+                return Err(format!(
+                    "public_inputs contains unknown input name: {name:?}"
+                ));
+            }
+        }
         let weight_set: std::collections::HashSet<&str> =
             wandb.w_and_b.iter().map(|w| w.name.as_str()).collect();
         let public_set: std::collections::HashSet<&str> =
@@ -148,11 +159,11 @@ impl CircuitParams {
                 private.push(io.name.clone());
             }
         }
-        InputNamePartition {
+        Ok(InputNamePartition {
             weights,
             public,
             private,
-        }
+        })
     }
 }
 
@@ -598,9 +609,7 @@ mod tests {
         // private:  "act"
         let params = make_params(&["w1", "act", "pub_input", "w2"], &["pub_input"]);
         let wandb = make_wandb(&["w1", "w2"]);
-        let p = params.partition_input_names(&wandb);
-        // Names appear in `inputs` order; the partition preserves
-        // that order within each category.
+        let p = params.partition_input_names(&wandb).unwrap();
         assert_eq!(p.weights, vec!["w1".to_string(), "w2".to_string()]);
         assert_eq!(p.public, vec!["pub_input".to_string()]);
         assert_eq!(p.private, vec!["act".to_string()]);
@@ -614,7 +623,7 @@ mod tests {
         // purpose).
         let params = make_params(&["x", "y"], &["x", "y"]);
         let wandb = make_wandb(&["x"]);
-        let p = params.partition_input_names(&wandb);
+        let p = params.partition_input_names(&wandb).unwrap();
         assert_eq!(p.weights, vec!["x".to_string()]);
         assert_eq!(p.public, vec!["y".to_string()]);
         assert!(p.private.is_empty());
@@ -627,7 +636,7 @@ mod tests {
         // bundles.
         let params = make_params(&["w", "a", "b"], &[]);
         let wandb = make_wandb(&["w"]);
-        let p = params.partition_input_names(&wandb);
+        let p = params.partition_input_names(&wandb).unwrap();
         assert_eq!(p.weights, vec!["w".to_string()]);
         assert!(p.public.is_empty());
         assert_eq!(p.private, vec!["a".to_string(), "b".to_string()]);

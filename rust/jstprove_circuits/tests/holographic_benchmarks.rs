@@ -162,42 +162,60 @@ fn lenet_shaped_circuit() -> Circuit<C> {
 /// down a bit relative to LeNet to reflect MiniResnet's smaller
 /// per-layer parameter count (~6K total vs LeNet's ~62K).
 fn miniresnet_shaped_circuit() -> Circuit<C> {
-    let conv_block = || LayerSpec {
+    let conv_block_10 = || LayerSpec {
         input_var_num: 10,
         output_var_num: 10,
         num_mul: 512,
         num_add: 512,
     };
-    let residual_add = || LayerSpec {
+    let conv_block_9 = || LayerSpec {
+        input_var_num: 9,
+        output_var_num: 9,
+        num_mul: 512,
+        num_add: 512,
+    };
+    let residual_add_10 = || LayerSpec {
         input_var_num: 10,
         output_var_num: 10,
         num_mul: 0,
         num_add: 1024,
     };
-    let pool = || LayerSpec {
+    let residual_add_9 = || LayerSpec {
+        input_var_num: 9,
+        output_var_num: 9,
+        num_mul: 0,
+        num_add: 512,
+    };
+    let pool_10_to_9 = || LayerSpec {
         input_var_num: 10,
         output_var_num: 9,
         num_mul: 256,
         num_add: 256,
     };
-    let gemm = || LayerSpec {
+    let pool_9_to_8 = || LayerSpec {
         input_var_num: 9,
+        output_var_num: 8,
+        num_mul: 256,
+        num_add: 256,
+    };
+    let gemm = || LayerSpec {
+        input_var_num: 8,
         output_var_num: 4,
         num_mul: 256,
         num_add: 256,
     };
     build_synthetic_circuit(&[
-        conv_block(),
-        conv_block(),
-        residual_add(),
-        conv_block(),
-        conv_block(),
-        residual_add(),
-        pool(),
-        conv_block(),
-        conv_block(),
-        residual_add(),
-        pool(),
+        conv_block_10(),
+        conv_block_10(),
+        residual_add_10(),
+        conv_block_10(),
+        conv_block_10(),
+        residual_add_10(),
+        pool_10_to_9(),
+        conv_block_9(),
+        conv_block_9(),
+        residual_add_9(),
+        pool_9_to_8(),
         gemm(),
     ])
 }

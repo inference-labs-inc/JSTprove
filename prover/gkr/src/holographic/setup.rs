@@ -100,6 +100,12 @@ impl ExpSerde for LayerWiringCommitment {
         let k_pad = u64::deserialize_from(&mut reader)? as usize;
         let log_k_pad = u64::deserialize_from(&mut reader)? as usize;
         let total_vars = u64::deserialize_from(&mut reader)? as usize;
+        if !k_pad.is_power_of_two()
+            || log_k_pad != k_pad.trailing_zeros() as usize
+            || total_vars != mu + log_k_pad
+        {
+            return Err(SerdeError::DeserializeError);
+        }
         Ok(Self {
             commitment,
             layout: SparseLayout {
@@ -122,6 +128,7 @@ pub struct LayerVerifyingEntry {
     pub mul: Option<LayerWiringCommitment>,
     pub add: Option<LayerWiringCommitment>,
     pub uni: Option<LayerWiringCommitment>,
+    pub cst: Option<LayerWiringCommitment>,
     pub mul_variable_coefs: Vec<VariableCoefEntry>,
     pub add_variable_coefs: Vec<VariableCoefEntry>,
     pub uni_variable_coefs: Vec<VariableCoefEntry>,
@@ -212,6 +219,7 @@ impl ExpSerde for LayerVerifyingEntry {
         serialize_optional_wiring(&self.mul, &mut writer)?;
         serialize_optional_wiring(&self.add, &mut writer)?;
         serialize_optional_wiring(&self.uni, &mut writer)?;
+        serialize_optional_wiring(&self.cst, &mut writer)?;
         serialize_variable_coefs(&self.mul_variable_coefs, &mut writer)?;
         serialize_variable_coefs(&self.add_variable_coefs, &mut writer)?;
         serialize_variable_coefs(&self.uni_variable_coefs, &mut writer)?;
@@ -226,6 +234,7 @@ impl ExpSerde for LayerVerifyingEntry {
         let mul = deserialize_optional_wiring(&mut reader)?;
         let add = deserialize_optional_wiring(&mut reader)?;
         let uni = deserialize_optional_wiring(&mut reader)?;
+        let cst = deserialize_optional_wiring(&mut reader)?;
         let mul_variable_coefs = deserialize_variable_coefs(&mut reader)?;
         let add_variable_coefs = deserialize_variable_coefs(&mut reader)?;
         let uni_variable_coefs = deserialize_variable_coefs(&mut reader)?;
@@ -237,6 +246,7 @@ impl ExpSerde for LayerVerifyingEntry {
             mul,
             add,
             uni,
+            cst,
             mul_variable_coefs,
             add_variable_coefs,
             uni_variable_coefs,
@@ -270,7 +280,7 @@ pub struct HolographicVerifyingKey {
 impl HolographicVerifyingKey {
     /// Current wire format version. Loaders refuse keys with a
     /// different version.
-    pub const CURRENT_VERSION: u32 = 2;
+    pub const CURRENT_VERSION: u32 = 3;
 }
 
 impl ExpSerde for HolographicVerifyingKey {
@@ -326,6 +336,11 @@ pub struct LayerProvingEntry<F: Field + Send + Sync + 'static> {
     pub mul: Option<LayerProvingWiring<F>>,
     pub add: Option<LayerProvingWiring<F>>,
     pub uni: Option<LayerProvingWiring<F>>,
+    pub cst: Option<LayerProvingWiring<F>>,
+    pub mul_variable_coefs: Vec<VariableCoefEntry>,
+    pub add_variable_coefs: Vec<VariableCoefEntry>,
+    pub uni_variable_coefs: Vec<VariableCoefEntry>,
+    pub const_variable_coefs: Vec<VariableCoefEntry>,
 }
 
 /// Prover-side scratch for one wiring polynomial. The
@@ -390,7 +405,7 @@ where
             mul,
             add,
             uni,
-            const_wiring: _const_wiring,
+            const_wiring,
             mul_variable_coefs,
             add_variable_coefs,
             uni_variable_coefs,
@@ -412,6 +427,11 @@ where
         } else {
             None
         };
+        let cst_committed = if let Some(poly) = const_wiring {
+            Some(commit_layer_wiring::<C::CircuitField>(layer_index, poly)?)
+        } else {
+            None
+        };
 
         let vk_entry = LayerVerifyingEntry {
             layer_index,
@@ -429,10 +449,14 @@ where
                 commitment: w.commitment.clone(),
                 layout: w.layout,
             }),
-            mul_variable_coefs,
-            add_variable_coefs,
-            uni_variable_coefs,
-            const_variable_coefs,
+            cst: cst_committed.as_ref().map(|w| LayerWiringCommitment {
+                commitment: w.commitment.clone(),
+                layout: w.layout,
+            }),
+            mul_variable_coefs: mul_variable_coefs.clone(),
+            add_variable_coefs: add_variable_coefs.clone(),
+            uni_variable_coefs: uni_variable_coefs.clone(),
+            const_variable_coefs: const_variable_coefs.clone(),
         };
         vk_layers.push(vk_entry);
 
@@ -443,6 +467,11 @@ where
             mul: mul_committed.map(|w| w.proving),
             add: add_committed.map(|w| w.proving),
             uni: uni_committed.map(|w| w.proving),
+            cst: cst_committed.map(|w| w.proving),
+            mul_variable_coefs,
+            add_variable_coefs,
+            uni_variable_coefs,
+            const_variable_coefs,
         };
         pk_layers.push(pk_entry);
     }

@@ -499,31 +499,12 @@ where
         let add_x = rx.clone();
         let rz_0_copy = rz_0;
 
-        let holo_layer = combined
-            .holographic_proof
-            .layers
-            .iter()
-            .find(|l| l.layer_index == i);
-
-        let mul_claim = holo_layer
-            .and_then(|l| l.mul.as_ref())
-            .map_or(CF::<C>::ZERO, |opening| {
-                opening.skeleton.evalclaim.claimed_eval
-            });
-
-        let add_claim = holo_layer
-            .and_then(|l| l.add.as_ref())
-            .map_or(CF::<C>::ZERO, |opening| {
-                opening.skeleton.evalclaim.claimed_eval
-            });
+        let mul_claim = claims.eval_mul;
+        let add_claim = claims.eval_add;
 
         let uni_z = rz_0_copy.clone();
         let uni_x = rx.clone();
-        let uni_claim = holo_layer
-            .and_then(|l| l.uni.as_ref())
-            .map_or(CF::<C>::ZERO, |opening| {
-                opening.skeleton.evalclaim.claimed_eval
-            });
+        let uni_claim = claims.eval_uni;
 
         per_layer_points.push(gkr::holographic::LayerEvalPoint {
             layer_index: i,

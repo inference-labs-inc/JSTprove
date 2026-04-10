@@ -44,8 +44,12 @@ impl<E: ExtensionField> ExpSerde for CombinedHolographicProof<E> {
             return Err(serdes::SerdeError::DeserializeError);
         }
         let mut wiring_claims = Vec::with_capacity(n_claims);
+        let mut seen_indices = std::collections::HashSet::with_capacity(n_claims);
         for _ in 0..n_claims {
             let layer_index = u64::deserialize_from(&mut reader)? as usize;
+            if !seen_indices.insert(layer_index) {
+                return Err(serdes::SerdeError::DeserializeError);
+            }
             let eval_cst = E::deserialize_from(&mut reader)?;
             let eval_add = E::deserialize_from(&mut reader)?;
             let eval_mul = E::deserialize_from(&mut reader)?;

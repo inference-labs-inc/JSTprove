@@ -78,9 +78,12 @@ pub fn sumcheck_verify_gkr_layer_holographic<F: FieldEngine>(
     use arith::Field;
     use polynomials::EqPolynomial;
 
-    assert_eq!(challenge.rz_1.is_none(), claimed_v1.is_none());
-    assert_eq!(challenge.rz_1.is_none(), alpha.is_none());
-    assert!(proving_time_mpi_size.is_power_of_two());
+    if (challenge.rz_1.is_none() != claimed_v1.is_none())
+        || (challenge.rz_1.is_none() != alpha.is_none())
+        || !proving_time_mpi_size.is_power_of_two()
+    {
+        return false;
+    }
 
     // --- prepare_layer (holographic version: no circuit ref) ---
     if is_output_layer {

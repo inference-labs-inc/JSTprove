@@ -405,7 +405,7 @@ fn commitment_serialization_round_trip() {
         nnz: 128,
         log_nnz: 7,
         batched_root: Node::default(),
-        batched_num_vars: 12,
+        batched_num_vars: 11,
     };
     let mut bytes = Vec::new();
     commitment.serialize_into(&mut bytes).unwrap();

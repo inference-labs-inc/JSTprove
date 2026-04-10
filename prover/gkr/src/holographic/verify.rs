@@ -26,13 +26,22 @@ use super::setup::{HolographicVerifyingKey, LayerVerifyingEntry, LayerWiringComm
 pub enum VerifyError {
     /// The proof's per-layer opening list does not match the VK's
     /// layer count.
-    LayerCountMismatch { expected: usize, got: usize },
+    LayerCountMismatch {
+        expected: usize,
+        got: usize,
+    },
     /// The eval-point list length does not match the VK's layer
     /// count.
-    EvalPointCountMismatch { expected: usize, got: usize },
+    EvalPointCountMismatch {
+        expected: usize,
+        got: usize,
+    },
     /// A mul / add wiring is present in the VK but absent from the
     /// proof's opening (or vice versa).
-    LayerOpeningSchemaMismatch { layer: usize, which: &'static str },
+    LayerOpeningSchemaMismatch {
+        layer: usize,
+        which: &'static str,
+    },
     /// `sparse_verify_full` rejected one of the per-layer
     /// openings.
     SparseVerify {
@@ -45,6 +54,10 @@ pub enum VerifyError {
         expected: usize,
         got_proof: usize,
         got_eval: usize,
+    },
+    ClaimMismatch {
+        layer: usize,
+        which: &'static str,
     },
 }
 
@@ -81,6 +94,11 @@ impl std::fmt::Display for VerifyError {
                 f,
                 "holographic verify: layer index mismatch at position {position}: \
                  expected {expected}, proof has {got_proof}, eval_point has {got_eval}"
+            ),
+            Self::ClaimMismatch { layer, which } => write!(
+                f,
+                "holographic verify: layer {layer} {which} opening claimed_eval \
+                 does not match the eval point's claim"
             ),
         }
     }
@@ -180,6 +198,7 @@ where
                 &eval_point.mul_z,
                 &eval_point.mul_x,
                 &eval_point.mul_y,
+                eval_point.mul_claim,
                 poly_commit::whir::SparseArity::Three,
                 transcript,
             )?;
@@ -207,6 +226,7 @@ where
                 &eval_point.add_z,
                 &eval_point.add_x,
                 &[],
+                eval_point.add_claim,
                 poly_commit::whir::SparseArity::Two,
                 transcript,
             )?;
@@ -234,6 +254,7 @@ where
                 &eval_point.uni_z,
                 &eval_point.uni_x,
                 &[],
+                eval_point.uni_claim,
                 poly_commit::whir::SparseArity::Two,
                 transcript,
             )?;
@@ -262,6 +283,7 @@ fn verify_one_wiring<C, E, T>(
     z: &[E],
     x: &[E],
     y: &[E],
+    expected_claim: E,
     arity: poly_commit::whir::SparseArity,
     transcript: &mut T,
 ) -> Result<(), VerifyError>
@@ -298,7 +320,16 @@ where
         layer: layer_idx,
         which,
         inner: e,
-    })
+    })?;
+
+    if proof_opening.skeleton.evalclaim.claimed_eval != expected_claim {
+        return Err(VerifyError::ClaimMismatch {
+            layer: layer_idx,
+            which,
+        });
+    }
+
+    Ok(())
 }
 
 #[cfg(test)]

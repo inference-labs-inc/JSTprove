@@ -136,6 +136,13 @@ impl<F: Field> SparseMle3<F> {
                 val: self.val.len(),
             });
         }
+        if self.arity == SparseArity::Two && self.n_y != 0 {
+            return Err(SparseMleError::DomainTooLarge {
+                n_z: self.n_z,
+                n_x: self.n_x,
+                n_y: self.n_y,
+            });
+        }
         if self.val.len() > SPARSE_MLE_MAX_NNZ {
             return Err(SparseMleError::NnzExceeded(self.val.len()));
         }
@@ -349,6 +356,18 @@ impl ExpSerde for SparseMle3Commitment {
             return Err(SerdeError::DeserializeError);
         }
         if arity == SparseArity::Two && n_y != 0 {
+            return Err(SerdeError::DeserializeError);
+        }
+        let m_z = 1usize << n_z;
+        let m_x = 1usize << n_x;
+        let m_y = if arity == SparseArity::Two {
+            1
+        } else {
+            1usize << n_y
+        };
+        let expected_num_vars =
+            super::commit::SparseLayout::compute(arity, nnz.max(1), m_z, m_x, m_y).total_vars;
+        if batched_num_vars != expected_num_vars {
             return Err(SerdeError::DeserializeError);
         }
         Ok(Self {

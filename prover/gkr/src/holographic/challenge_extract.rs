@@ -61,7 +61,7 @@ where
     #[cfg(feature = "grinding")]
     crate::prover::snark::grind::<Cfg>(
         &mut transcript,
-        &gkr_engine::MPIConfig::verifier_new(proving_time_mpi_size as u32),
+        &gkr_engine::MPIConfig::verifier_new(proving_time_mpi_size as i32),
     );
 
     {

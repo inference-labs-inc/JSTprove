@@ -1,12 +1,16 @@
 //! Sparse wiring extraction from a `circuit::Circuit<C>`.
 //!
-//! Walks each layer's `mul` and `add` gate lists and emits
-//! [`SparseMle3`] instances suitable for `poly_commit::sparse_commit`.
-//! The mul wiring of a layer with `output_var_num = a` and
-//! `input_var_num = b` is a sparse multilinear polynomial in
-//! `a + b + b` variables (output, x, y); the add wiring is in
-//! `a + b` variables (output, x, with the y axis collapsed via
-//! `SparseArity::Two`).
+//! Walks each layer's `mul`, `add`, `const_`, and `uni` gate lists
+//! and emits [`SparseMle3`] instances suitable for
+//! `poly_commit::sparse_commit`. The mul wiring of a layer with
+//! `output_var_num = a` and `input_var_num = b` is a sparse
+//! multilinear polynomial in `a + b + b` variables (output, x, y);
+//! the add wiring is in `a + b` variables (output, x, with the y
+//! axis collapsed via `SparseArity::Two`). Constant gates produce a
+//! degenerate 2-arity polynomial with `n_x = 0`. Uni-12346
+//! (identity) gates are promoted into the add wiring; uni-12345
+//! (x^5 S-box) gates are extracted into a separate 2-arity `uni`
+//! wiring polynomial.
 //!
 //! Coefficient handling. Each gate carries a `coef_type` that
 //! distinguishes a fixed `Constant` coefficient from a `Random`
@@ -882,7 +886,17 @@ mod tests {
         let x: Vec<GoldilocksExt4> = vec![GoldilocksExt4::from(5u64), GoldilocksExt4::from(7u64)];
         let y: Vec<GoldilocksExt4> = vec![GoldilocksExt4::from(11u64), GoldilocksExt4::from(13u64)];
         // The sparse evaluate function returns a single field element
-        let _v_mul = mul_poly.evaluate::<GoldilocksExt4>(&z, &x, &y);
-        let _v_add = add_poly.evaluate::<GoldilocksExt4>(&z, &x, &[]);
+        let v_mul = mul_poly.evaluate::<GoldilocksExt4>(&z, &x, &y);
+        let v_add = add_poly.evaluate::<GoldilocksExt4>(&z, &x, &[]);
+        assert_ne!(
+            v_mul,
+            GoldilocksExt4::ZERO,
+            "dense MLE eval at non-trivial point should be non-zero for this gate set"
+        );
+        assert_ne!(
+            v_add,
+            GoldilocksExt4::ZERO,
+            "dense MLE eval at non-trivial point should be non-zero for this gate set"
+        );
     }
 }
