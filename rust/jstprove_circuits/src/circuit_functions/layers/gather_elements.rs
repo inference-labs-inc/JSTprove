@@ -159,6 +159,17 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GatherElementsLayer
 
                     let hint_out = api.new_hint(GATHER_ELEMENTS_HINT_KEY, &hint_inputs, 1);
                     let y = hint_out[0];
+
+                    let mut mux_sum = api.constant(0u32);
+                    for (a, &elem) in axis_slice.iter().enumerate() {
+                        let a_var = api.constant(a as u32);
+                        let diff = api.sub(idx_var, a_var);
+                        let is_match = api.is_zero(diff);
+                        let selected = api.mul(is_match, elem);
+                        mux_sum = api.add(mux_sum, selected);
+                    }
+                    api.assert_is_equal(y, mux_sum);
+
                     logup_ctx.range_check::<C, Builder>(api, y, *n_bits)?;
                     out_vars.push(y);
                 }

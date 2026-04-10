@@ -43,7 +43,7 @@ use crate::circuit_functions::{
     CircuitError,
     gadgets::range_check::LogupRangeCheckContext,
     hints::gridsample::GRIDSAMPLE_HINT_KEY,
-    hints::gridsample_dynamic::GRIDSAMPLE_DYNAMIC_HINT_KEY,
+    hints::gridsample_dynamic::{GRIDSAMPLE_DYNAMIC_HINT_KEY, GRIDSAMPLE_DYNAMIC_OUTPUTS},
     layers::{LayerError, LayerKind, layer_ops::LayerOp},
     utils::{
         constants::INPUT,
@@ -424,6 +424,9 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GridSampleLayer {
                     })?;
 
                 let scale_var = api.constant(CircuitField::<C>::from_u256(U256::from(*scaling)));
+                let scale_exp = scaling.trailing_zeros() as usize;
+                let half_scale =
+                    api.constant(CircuitField::<C>::from_u256(U256::from(*scaling / 2)));
                 let h_in_var = api.constant(CircuitField::<C>::from_u256(U256::from(*h_in as u64)));
                 let w_in_var = api.constant(CircuitField::<C>::from_u256(U256::from(*w_in as u64)));
                 let ac_var = api.constant(CircuitField::<C>::from_u256(U256::from(u64::from(
@@ -460,9 +463,26 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GridSampleLayer {
                                 hint_inputs.push(x_norm_var);
                                 hint_inputs.push(y_norm_var);
 
-                                let hint_out =
-                                    api.new_hint(GRIDSAMPLE_DYNAMIC_HINT_KEY, &hint_inputs, 1);
+                                let hint_out = api.new_hint(
+                                    GRIDSAMPLE_DYNAMIC_HINT_KEY,
+                                    &hint_inputs,
+                                    GRIDSAMPLE_DYNAMIC_OUTPUTS,
+                                );
                                 let y = hint_out[0];
+                                let corner_vars = &hint_out[1..5];
+                                let weight_vars = &hint_out[5..9];
+
+                                let mut weighted_sum =
+                                    api.constant(CircuitField::<C>::from_u256(U256::from(0u64)));
+                                for i in 0..4 {
+                                    let product = api.mul(corner_vars[i], weight_vars[i]);
+                                    weighted_sum = api.add(weighted_sum, product);
+                                }
+
+                                let sum_plus_half = api.add(weighted_sum, half_scale);
+                                let y_times_scale = api.mul(y, scale_var);
+                                let remainder = api.sub(sum_plus_half, y_times_scale);
+                                logup_ctx.range_check::<C, Builder>(api, remainder, scale_exp)?;
 
                                 logup_ctx.range_check::<C, Builder>(api, y, *n_bits)?;
                                 out_vars.push(y);

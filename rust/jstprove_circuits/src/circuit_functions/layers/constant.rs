@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use expander_compiler::frontend::{Config, RootAPI, Variable};
-use ndarray::{ArrayD, IxDyn};
+use ndarray::ArrayD;
 
 use crate::circuit_functions::{
     CircuitError,
@@ -13,7 +13,7 @@ use crate::circuit_functions::{
 #[derive(Debug)]
 pub struct ConstantLayer {
     outputs: Vec<String>,
-    values: Option<ArrayD<i64>>,
+    values: ArrayD<i64>,
 }
 
 impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ConstantLayer {
@@ -23,26 +23,17 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ConstantLayer {
         _logup_ctx: &mut LogupRangeCheckContext,
         _input: &HashMap<String, ArrayD<Variable>>,
     ) -> Result<(Vec<String>, ArrayD<Variable>), CircuitError> {
-        let arr = match &self.values {
-            Some(vals) => {
-                let elements: Vec<Variable> = vals
-                    .iter()
-                    .map(|&v| load_circuit_constant::<C, Builder>(api, v))
-                    .collect();
-                ArrayD::from_shape_vec(vals.raw_dim(), elements).map_err(|e| {
-                    LayerError::InvalidShape {
-                        layer: LayerKind::Constant,
-                        msg: e.to_string(),
-                    }
-                })?
+        let elements: Vec<Variable> = self
+            .values
+            .iter()
+            .map(|&v| load_circuit_constant::<C, Builder>(api, v))
+            .collect();
+        let arr = ArrayD::from_shape_vec(self.values.raw_dim(), elements).map_err(|e| {
+            LayerError::InvalidShape {
+                layer: LayerKind::Constant,
+                msg: e.to_string(),
             }
-            None => ArrayD::from_shape_vec(IxDyn(&[1]), vec![api.constant(0)]).map_err(|e| {
-                LayerError::InvalidShape {
-                    layer: LayerKind::Constant,
-                    msg: e.to_string(),
-                }
-            })?,
-        };
+        })?;
 
         Ok((self.outputs.clone(), arr))
     }
@@ -55,11 +46,24 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ConstantLayer {
         _index: usize,
         layer_context: &crate::circuit_functions::utils::build_layers::BuildLayerContext,
     ) -> Result<Box<dyn LayerOp<C, Builder>>, CircuitError> {
-        let values = layer
+        let out_name = layer
             .outputs
             .first()
-            .and_then(|out_name| layer_context.get_constant(out_name))
-            .cloned();
+            .ok_or_else(|| LayerError::MissingParameter {
+                layer: LayerKind::Constant,
+                param: "output tensor".to_string(),
+            })?;
+
+        let values = layer_context
+            .get_constant(out_name)
+            .cloned()
+            .ok_or_else(|| LayerError::Other {
+                layer: LayerKind::Constant,
+                msg: format!(
+                    "Constant node output '{out_name}' has no tensor payload in constants_map; \
+                     the ONNX slice must include the Constant node's value as an initializer"
+                ),
+            })?;
 
         Ok(Box::new(Self {
             outputs: layer.outputs.clone(),

@@ -169,7 +169,6 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ExpandLayer {
             .into());
         }
 
-        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
         let output_shape = if let Some(shape) = layer_context.shapes_map.get(output_name.as_str()) {
             shape.clone()
         } else {
@@ -183,7 +182,43 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ExpandLayer {
                         ),
                     }
                 })?;
-            shape_arr.iter().map(|&v| v as usize).collect()
+            if shape_arr.ndim() != 1 {
+                return Err(LayerError::InvalidShape {
+                    layer: LayerKind::Expand,
+                    msg: format!(
+                        "shape tensor '{shape_tensor_name}' must be 1-D, got {}D",
+                        shape_arr.ndim()
+                    ),
+                }
+                .into());
+            }
+            shape_arr
+                .iter()
+                .enumerate()
+                .map(|(i, &v)| {
+                    if v < 0 {
+                        Err(LayerError::InvalidShape {
+                            layer: LayerKind::Expand,
+                            msg: format!(
+                                "shape tensor '{shape_tensor_name}' entry [{i}] = {v} is negative; \
+                                 target shape for '{output_name}' must be non-negative"
+                            ),
+                        }
+                        .into())
+                    } else {
+                        usize::try_from(v).map_err(|_| {
+                            LayerError::InvalidShape {
+                                layer: LayerKind::Expand,
+                                msg: format!(
+                                    "shape tensor '{shape_tensor_name}' entry [{i}] = {v} \
+                                     exceeds usize range for '{output_name}'"
+                                ),
+                            }
+                            .into()
+                        })
+                    }
+                })
+                .collect::<Result<Vec<usize>, CircuitError>>()?
         };
 
         Ok(Box::new(Self {
