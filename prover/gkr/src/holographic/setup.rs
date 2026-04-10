@@ -263,10 +263,28 @@ impl ExpSerde for LayerVerifyingEntry {
         let add_variable_coefs = deserialize_variable_coefs(&mut reader)?;
         let uni_variable_coefs = deserialize_variable_coefs(&mut reader)?;
         let const_variable_coefs = deserialize_variable_coefs(&mut reader)?;
-        if (mul.is_none() && !mul_variable_coefs.is_empty())
-            || (add.is_none() && !add_variable_coefs.is_empty())
-            || (uni.is_none() && !uni_variable_coefs.is_empty())
-            || (cst.is_none() && !const_variable_coefs.is_empty())
+        fn coefs_valid(
+            wiring: &Option<LayerWiringCommitment>,
+            coefs: &[VariableCoefEntry],
+        ) -> bool {
+            match wiring {
+                None => coefs.is_empty(),
+                Some(w) => {
+                    let nnz = w.commitment.nnz;
+                    coefs.iter().all(|e| {
+                        let idx = match e {
+                            VariableCoefEntry::Random { sparse_idx } => *sparse_idx,
+                            VariableCoefEntry::PublicInput { sparse_idx, .. } => *sparse_idx,
+                        };
+                        idx < nnz
+                    })
+                }
+            }
+        }
+        if !coefs_valid(&mul, &mul_variable_coefs)
+            || !coefs_valid(&add, &add_variable_coefs)
+            || !coefs_valid(&uni, &uni_variable_coefs)
+            || !coefs_valid(&cst, &const_variable_coefs)
         {
             return Err(SerdeError::DeserializeError);
         }
