@@ -472,14 +472,26 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GridSampleLayer {
 
         // Read the constant grid tensor (quantised at α¹ by the quantizer).
         let grid_name = &layer.inputs[1];
-        let grid_array: ArrayD<i64> =
-            get_w_or_b(layer_context.w_and_b_map, grid_name).map_err(|e| LayerError::Other {
-                layer: LayerKind::GridSample,
-                msg: format!(
-                    "failed to read grid tensor '{grid_name}': {e}; \
-                        GridSample requires a compile-time constant (initializer) grid"
-                ),
-            })?;
+        let grid_array: ArrayD<i64> = match get_w_or_b(layer_context.w_and_b_map, grid_name) {
+            Ok(arr) => arr,
+            Err(crate::circuit_functions::utils::UtilsError::MissingTensor { .. }) => layer_context
+                .get_constant(grid_name)
+                .cloned()
+                .ok_or_else(|| LayerError::Other {
+                    layer: LayerKind::GridSample,
+                    msg: format!(
+                        "grid tensor '{grid_name}' not found in weights or constants; \
+                             GridSample requires a compile-time constant (initializer) grid"
+                    ),
+                })?,
+            Err(e) => {
+                return Err(LayerError::Other {
+                    layer: LayerKind::GridSample,
+                    msg: format!("failed to read grid tensor '{grid_name}': {e}"),
+                }
+                .into());
+            }
+        };
 
         let grid_flat = grid_array
             .as_slice()

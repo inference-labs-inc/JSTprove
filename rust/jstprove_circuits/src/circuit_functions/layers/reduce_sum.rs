@@ -500,12 +500,14 @@ mod tests {
         Box<dyn LayerOp<GoldilocksConfig, TestBuilder>>,
         crate::circuit_functions::CircuitError,
     > {
+        let constants_map = HashMap::new();
         let ctx = BuildLayerContext {
             w_and_b_map,
             shapes_map,
             n_bits_config,
             default_n_bits: default_n_bits_for_config::<GoldilocksConfig>(),
             weights_as_inputs: false,
+            constants_map: &constants_map,
         };
 
         <ReduceSumLayer as LayerOp<GoldilocksConfig, TestBuilder>>::build(

@@ -1,11 +1,13 @@
 use std::collections::HashMap;
 
+use ndarray::ArrayD;
+
 use crate::circuit_functions::{
     layers::{LayerKind, layer_ops::LayerOp},
     utils::{
         errors::BuildError,
         graph_pattern_matching::{PatternMatcher, PatternRegistry, optimization_skip_layers},
-        onnx_model::{Architecture, CircuitParams, WANDB, collect_all_shapes},
+        onnx_model::{Architecture, CircuitParams, WANDB, collect_all_shapes, get_w_or_b},
         onnx_types::ONNXLayer,
     },
 };
@@ -36,6 +38,7 @@ pub struct BuildLayerContext<'a> {
     pub n_bits_config: &'a HashMap<String, usize>,
     pub default_n_bits: usize,
     pub weights_as_inputs: bool,
+    pub constants_map: &'a HashMap<String, ArrayD<i64>>,
 }
 
 impl BuildLayerContext<'_> {
@@ -45,6 +48,11 @@ impl BuildLayerContext<'_> {
             .get(layer_name)
             .copied()
             .unwrap_or(self.default_n_bits)
+    }
+
+    #[must_use]
+    pub fn get_constant(&self, name: &str) -> Option<&ArrayD<i64>> {
+        self.constants_map.get(name)
     }
 }
 
@@ -86,12 +94,15 @@ pub fn build_layers<C: Config, Builder: RootAPI<C>>(
     let shapes_map: HashMap<String, Vec<usize>> =
         collect_all_shapes(&architecture.architecture, inputs);
 
+    let constants_map = extract_architecture_constants(&architecture.architecture, &w_and_b_map)?;
+
     let layer_context = BuildLayerContext {
         w_and_b_map: &w_and_b_map,
         shapes_map: &shapes_map,
         n_bits_config: &circuit_params.n_bits_config,
         default_n_bits: default_n_bits_for_config::<C>(),
         weights_as_inputs: circuit_params.weights_as_inputs,
+        constants_map: &constants_map,
     };
 
     let matcher = PatternMatcher::new();
@@ -149,4 +160,30 @@ pub fn build_layers<C: Config, Builder: RootAPI<C>>(
         });
     }
     Ok(layers)
+}
+
+fn extract_architecture_constants(
+    architecture: &[ONNXLayer],
+    w_and_b_map: &HashMap<String, &ONNXLayer>,
+) -> Result<HashMap<String, ArrayD<i64>>, BuildError> {
+    let mut constants_map = HashMap::new();
+    for layer in architecture {
+        if layer.op_type != "Constant" || layer.tensor.is_none() {
+            continue;
+        }
+        for out_name in &layer.outputs {
+            if w_and_b_map.contains_key(out_name) {
+                continue;
+            }
+            let tmp_map: HashMap<String, &ONNXLayer> =
+                [(out_name.clone(), layer)].into_iter().collect();
+            let arr = get_w_or_b::<i64, _>(&tmp_map, out_name).map_err(|e| {
+                BuildError::LayerBuild(format!(
+                    "Failed to extract Constant tensor '{out_name}': {e}"
+                ))
+            })?;
+            constants_map.insert(out_name.clone(), arr);
+        }
+    }
+    Ok(constants_map)
 }

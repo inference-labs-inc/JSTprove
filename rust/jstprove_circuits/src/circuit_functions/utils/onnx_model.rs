@@ -171,10 +171,31 @@ pub fn get_optional_w_or_b(
 ) -> Result<Option<ArrayD<i64>>, UtilsError> {
     match get_w_or_b(layer_context.w_and_b_map, input) {
         Ok(arr) => Ok(Some(arr.into_dyn())),
-        Err(UtilsError::MissingTensor { .. }) => Ok(None), // initializer genuinely missing
-        Err(e) => Err(e),                                  // propogates other error
+        Err(UtilsError::MissingTensor { .. }) => Ok(layer_context.get_constant(input).cloned()),
+        Err(e) => Err(e),
     }
 }
+
+/// # Errors
+/// Returns `UtilsError::MissingTensor` when the name is absent from both
+/// the weight/bias map and the constants map.
+pub fn get_w_or_b_or_constant(
+    layer_context: &BuildLayerContext,
+    name: &String,
+) -> Result<ArrayD<i64>, UtilsError> {
+    match get_w_or_b(layer_context.w_and_b_map, name) {
+        Ok(arr) => Ok(arr),
+        Err(UtilsError::MissingTensor { .. }) => layer_context
+            .get_constant(name)
+            .cloned()
+            .ok_or_else(|| UtilsError::MissingTensor {
+                tensor: name.clone(),
+            }),
+        Err(e) => Err(e),
+    }
+}
+
+const FLAT2D_SUFFIX: &str = "__flat2d_";
 
 #[must_use]
 pub fn collect_all_shapes(layers: &[ONNXLayer], ios: &[ONNXIO]) -> HashMap<String, Vec<usize>> {
@@ -190,6 +211,25 @@ pub fn collect_all_shapes(layers: &[ONNXLayer], ios: &[ONNXIO]) -> HashMap<Strin
     // Merge from IOs
     for io in ios {
         result.insert(io.name.clone(), io.shape.clone());
+    }
+
+    let mut flat2d_entries: Vec<(String, Vec<usize>)> = Vec::new();
+    for layer in layers {
+        for input_name in &layer.inputs {
+            if input_name.ends_with(FLAT2D_SUFFIX) && !result.contains_key(input_name) {
+                let base_name = &input_name[..input_name.len() - FLAT2D_SUFFIX.len()];
+                if let Some(base_shape) = result.get(base_name) {
+                    if base_shape.len() >= 2 {
+                        let d0 = base_shape[0];
+                        let rest: usize = base_shape[1..].iter().product();
+                        flat2d_entries.push((input_name.clone(), vec![d0, rest]));
+                    }
+                }
+            }
+        }
+    }
+    for (k, v) in flat2d_entries {
+        result.insert(k, v);
     }
 
     result
