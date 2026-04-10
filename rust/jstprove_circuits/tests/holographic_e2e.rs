@@ -101,10 +101,8 @@ fn random_eval_points(
     pk: &gkr::holographic::HolographicProvingKey<C>,
     seed: u64,
 ) -> Vec<LayerEvalPoint<GoldilocksExt4>> {
-    use ark_std::test_rng;
     use rand::{RngCore, SeedableRng};
     let mut rng = rand_chacha::ChaCha20Rng::seed_from_u64(seed);
-    let _ = test_rng();
     let mut next = move || -> GoldilocksExt4 {
         let mut bytes = [0u8; 32];
         rng.fill_bytes(&mut bytes);

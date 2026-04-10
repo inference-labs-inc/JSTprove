@@ -263,57 +263,44 @@ pub fn build_eval_points_from_challenges<F: FieldEngine>(
     for pk_layer in &pk.layers {
         let ch = challenge_by_layer.get(&pk_layer.layer_index)?;
 
-        let mul_z = ch.rz_0.clone();
-        let mul_x = ch.rx.clone();
-        let mul_y = ch.ry.clone().unwrap_or_default();
-        let add_z = ch.rz_0.clone();
-        let add_x = ch.rx.clone();
+        let rz = ch.rz_0.clone();
+        let rx = ch.rx.clone();
+        let ry = ch.ry.clone().unwrap_or_default();
 
         let mul_claim = if let Some(ref mul_wiring) = pk_layer.mul {
-            mul_wiring
-                .poly
-                .evaluate::<F::ChallengeField>(&mul_z, &mul_x, &mul_y)
+            mul_wiring.poly.evaluate::<F::ChallengeField>(&rz, &rx, &ry)
         } else {
             F::ChallengeField::ZERO
         };
 
         let add_claim = if let Some(ref add_wiring) = pk_layer.add {
-            add_wiring
-                .poly
-                .evaluate::<F::ChallengeField>(&add_z, &add_x, &[])
+            add_wiring.poly.evaluate::<F::ChallengeField>(&rz, &rx, &[])
         } else {
             F::ChallengeField::ZERO
         };
 
-        let uni_z = ch.rz_0.clone();
-        let uni_x = ch.rx.clone();
         let uni_claim = if let Some(ref uni_wiring) = pk_layer.uni {
-            uni_wiring
-                .poly
-                .evaluate::<F::ChallengeField>(&uni_z, &uni_x, &[])
+            uni_wiring.poly.evaluate::<F::ChallengeField>(&rz, &rx, &[])
         } else {
             F::ChallengeField::ZERO
         };
 
-        let cst_z = ch.rz_0.clone();
         let cst_claim = if let Some(ref cst_wiring) = pk_layer.cst {
-            cst_wiring
-                .poly
-                .evaluate::<F::ChallengeField>(&cst_z, &[], &[])
+            cst_wiring.poly.evaluate::<F::ChallengeField>(&rz, &[], &[])
         } else {
             F::ChallengeField::ZERO
         };
 
         eval_points.push(LayerEvalPoint {
             layer_index: pk_layer.layer_index,
-            mul_z,
-            mul_x,
-            mul_y,
-            add_z,
-            add_x,
-            uni_z,
-            uni_x,
-            cst_z,
+            mul_z: rz.clone(),
+            mul_x: rx.clone(),
+            mul_y: ry,
+            add_z: rz.clone(),
+            add_x: rx.clone(),
+            uni_z: rz.clone(),
+            uni_x: rx.clone(),
+            cst_z: rz,
             mul_claim,
             add_claim,
             uni_claim,

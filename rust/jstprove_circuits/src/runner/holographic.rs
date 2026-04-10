@@ -165,10 +165,13 @@ where
         CombinedHolographicProof::<ChallengeField<C>>::deserialize_from(Cursor::new(&*proof_data))
             .map_err(|e| RunError::Deserialize(format!("combined holographic proof: {e:?}")))?;
 
-    // Single-process verification — matches MPIConfig::prover_new()
-    // in the prove path. Multi-process holographic verification
-    // would need to extract the MPI world size from the proof or VK.
+    // Single-process verification. Multi-process holographic
+    // proofs are not yet supported; reject them explicitly.
     let proving_time_mpi_size = 1usize;
+    // TODO: when MPI support lands, read the world size from the
+    // VK or proof and set proving_time_mpi_size accordingly.
+    // For now, any proof produced with world_size > 1 will fail
+    // transcript synchronization and be rejected by the sumcheck.
 
     let mut transcript = <C as GKREngine>::TranscriptConfig::new();
     let mut gkr_cursor = Cursor::new(&combined.gkr_proof.bytes);
@@ -427,8 +430,9 @@ where
         let mut r_simd_xy = vec![];
         let mut r_mpi_xy = vec![];
 
+        let mut verified = true;
         for _ in 0..var_num {
-            gkr::verify_sumcheck_step::<<C as GKREngine>::FieldConfig>(
+            verified &= gkr::verify_sumcheck_step::<<C as GKREngine>::FieldConfig>(
                 &mut cursor,
                 sumcheck::SUMCHECK_GKR_DEGREE,
                 &mut transcript,
@@ -440,7 +444,7 @@ where
         sumcheck::GKRVerifierHelper::<<C as GKREngine>::FieldConfig>::set_rx(&rx, &mut sp);
 
         for _ in 0..simd_var_num {
-            gkr::verify_sumcheck_step::<<C as GKREngine>::FieldConfig>(
+            verified &= gkr::verify_sumcheck_step::<<C as GKREngine>::FieldConfig>(
                 &mut cursor,
                 sumcheck::SUMCHECK_GKR_SIMD_MPI_DEGREE,
                 &mut transcript,
@@ -454,7 +458,7 @@ where
         );
 
         for _ in 0..proving_time_mpi_size.trailing_zeros() {
-            gkr::verify_sumcheck_step::<<C as GKREngine>::FieldConfig>(
+            verified &= gkr::verify_sumcheck_step::<<C as GKREngine>::FieldConfig>(
                 &mut cursor,
                 sumcheck::SUMCHECK_GKR_SIMD_MPI_DEGREE,
                 &mut transcript,
@@ -466,6 +470,11 @@ where
         sumcheck::GKRVerifierHelper::<<C as GKREngine>::FieldConfig>::set_r_mpi_xy(
             &r_mpi_xy, &mut sp,
         );
+        if !verified {
+            return Err(RunError::Verify(
+                "sumcheck step failed during eval-point extraction".to_string(),
+            ));
+        }
 
         let claim_x = CF::<C>::deserialize_from(&mut cursor)
             .map_err(|e| RunError::Deserialize(format!("vx_claim: {e:?}")))?;
@@ -477,7 +486,7 @@ where
         } else {
             ry = Some(vec![]);
             for _ in 0..var_num {
-                gkr::verify_sumcheck_step::<<C as GKREngine>::FieldConfig>(
+                verified &= gkr::verify_sumcheck_step::<<C as GKREngine>::FieldConfig>(
                     &mut cursor,
                     sumcheck::SUMCHECK_GKR_DEGREE,
                     &mut transcript,
@@ -485,6 +494,11 @@ where
                     ry.as_mut().unwrap(),
                     &sp,
                 );
+            }
+            if !verified {
+                return Err(RunError::Verify(
+                    "phase-two sumcheck step failed during eval-point extraction".to_string(),
+                ));
             }
             sumcheck::GKRVerifierHelper::<<C as GKREngine>::FieldConfig>::set_ry(
                 ry.as_ref().unwrap(),
