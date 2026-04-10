@@ -11,6 +11,7 @@ mod gkr_square;
 pub use gkr_square::gkr_square_verify;
 
 pub mod holographic_common;
+pub mod holographic_gkr;
 
 mod snark;
 pub use snark::Verifier;

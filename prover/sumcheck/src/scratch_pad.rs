@@ -107,7 +107,14 @@ impl<F: FieldEngine> VerifierScratchPad<F> {
             .max()
             .unwrap();
         max_num_var = max(max_num_var, circuit.log_input_size());
+        Self::new_with_num_vars(max_num_var, mpi_world_size)
+    }
 
+    /// Circuit-free constructor: build a scratch pad from the
+    /// maximum variable count directly rather than from a circuit
+    /// reference. Used by the holographic GKR verifier which
+    /// derives the dimension from the verifying key.
+    pub fn new_with_num_vars(max_num_var: usize, mpi_world_size: usize) -> Self {
         let max_io_size = 1usize << max_num_var;
         let simd_size = F::get_field_pack_size();
 
