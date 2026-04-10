@@ -370,9 +370,15 @@ where
     let gamma_2: E = transcript.generate_field_element();
     let params = MemoryHashParams { gamma_1, gamma_2 };
 
-    let m_z = 1usize << scratch.n_z;
-    let m_x = 1usize << scratch.n_x;
-    let m_y = 1usize << scratch.n_y;
+    let m_z = 1usize
+        .checked_shl(scratch.n_z as u32)
+        .expect("n_z exceeds shift width");
+    let m_x = 1usize
+        .checked_shl(scratch.n_x as u32)
+        .expect("n_x exceeds shift width");
+    let m_y = 1usize
+        .checked_shl(scratch.n_y as u32)
+        .expect("n_y exceeds shift width");
 
     // Re-materialize the per-axis eq tables so this sub-phase does
     // not require the caller to plumb them in from sparse_open_evalclaim.

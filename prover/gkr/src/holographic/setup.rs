@@ -106,21 +106,30 @@ impl ExpSerde for LayerWiringCommitment {
         let k_pad = u64::deserialize_from(&mut reader)? as usize;
         let log_k_pad = u64::deserialize_from(&mut reader)? as usize;
         let total_vars = u64::deserialize_from(&mut reader)? as usize;
-        if !k_pad.is_power_of_two()
-            || log_k_pad != k_pad.trailing_zeros() as usize
-            || total_vars != mu + log_k_pad
+        let m_z = 1usize
+            .checked_shl(commitment.n_z as u32)
+            .ok_or(SerdeError::DeserializeError)?;
+        let m_x = 1usize
+            .checked_shl(commitment.n_x as u32)
+            .ok_or(SerdeError::DeserializeError)?;
+        let m_y = match arity {
+            poly_commit::whir::SparseArity::Two => 1,
+            poly_commit::whir::SparseArity::Three => 1usize
+                .checked_shl(commitment.n_y as u32)
+                .ok_or(SerdeError::DeserializeError)?,
+        };
+        let nnz = commitment.nnz.max(1);
+        let expected = SparseLayout::compute(arity, nnz, m_z, m_x, m_y);
+        if mu != expected.mu
+            || k_pad != expected.k_pad
+            || log_k_pad != expected.log_k_pad
+            || total_vars != expected.total_vars
         {
             return Err(SerdeError::DeserializeError);
         }
         Ok(Self {
             commitment,
-            layout: SparseLayout {
-                arity,
-                mu,
-                k_pad,
-                log_k_pad,
-                total_vars,
-            },
+            layout: expected,
         })
     }
 }
@@ -573,32 +582,9 @@ where
             .map_err(|_| SetupError::SparseCommit { layer: layer_index })?;
 
     let proving = LayerProvingWiring {
-        poly: SparseMle3 {
-            n_z: poly.n_z,
-            n_x: poly.n_x,
-            n_y: poly.n_y,
-            arity: poly.arity,
-            row: poly.row,
-            col_x: poly.col_x,
-            col_y: poly.col_y,
-            val: poly.val,
-        },
+        poly,
         layout,
-        scratch: SparseMleScratchPad {
-            arity: scratch.arity,
-            n_z: scratch.n_z,
-            n_x: scratch.n_x,
-            n_y: scratch.n_y,
-            nnz: scratch.nnz,
-            log_nnz: scratch.log_nnz,
-            row: scratch.row,
-            col_x: scratch.col_x,
-            col_y: scratch.col_y,
-            val: scratch.val,
-            ts_z: scratch.ts_z,
-            ts_x: scratch.ts_x,
-            ts_y: scratch.ts_y,
-        },
+        scratch,
         tree,
         codeword,
         combined_evals,
