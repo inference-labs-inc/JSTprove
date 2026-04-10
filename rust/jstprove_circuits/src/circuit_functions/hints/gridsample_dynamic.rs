@@ -66,21 +66,40 @@ pub fn gridsample_dynamic_hint<F: FieldArith>(
     }
 
     let scale_u256 = inputs[0].to_u256();
-    if scale_u256 > U256::from(u64::MAX) || scale_u256 == U256::ZERO {
+    let max_scale = U256::from(i64::MAX as u64);
+    if scale_u256 > max_scale || scale_u256 == U256::ZERO {
         return Err(Error::UserError(format!(
-            "gridsample_dynamic_hint: invalid scale {scale_u256}"
+            "gridsample_dynamic_hint: scale {scale_u256} must be in [1, i64::MAX]"
         )));
     }
     let scale_u64 = scale_u256.as_u64();
     let alpha_f = scale_u64 as f64;
 
-    let h_in = field_to_i64(inputs[1]) as usize;
-    let w_in = field_to_i64(inputs[2]) as usize;
+    let h_in_i64 = field_to_i64(inputs[1]);
+    let w_in_i64 = field_to_i64(inputs[2]);
+    if h_in_i64 <= 0 || w_in_i64 <= 0 {
+        return Err(Error::UserError(format!(
+            "gridsample_dynamic_hint: h_in={h_in_i64}, w_in={w_in_i64} must both be positive"
+        )));
+    }
+    let h_in = h_in_i64 as usize;
+    let w_in = w_in_i64 as usize;
     let align_corners = field_to_i64(inputs[3]) != 0;
     let padding_mode_code = field_to_i64(inputs[4]);
 
-    let data_size = h_in * w_in;
-    let expected_len = 5 + data_size + 2;
+    let data_size = h_in.checked_mul(w_in).ok_or_else(|| {
+        Error::UserError(format!(
+            "gridsample_dynamic_hint: h_in * w_in overflow ({h_in} * {w_in})"
+        ))
+    })?;
+    let expected_len = 5usize
+        .checked_add(data_size)
+        .and_then(|v| v.checked_add(2))
+        .ok_or_else(|| {
+            Error::UserError(format!(
+                "gridsample_dynamic_hint: expected_len overflow for data_size={data_size}"
+            ))
+        })?;
     if inputs.len() != expected_len {
         return Err(Error::UserError(format!(
             "gridsample_dynamic_hint: expected {expected_len} inputs \

@@ -154,20 +154,6 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ExpandLayer {
             })?;
 
         let shape_tensor_name = &layer.inputs[1];
-        if !layer_context
-            .shapes_map
-            .contains_key(shape_tensor_name.as_str())
-            && get_w_or_b_or_constant(layer_context, shape_tensor_name).is_err()
-        {
-            return Err(LayerError::InvalidShape {
-                layer: LayerKind::Expand,
-                msg: format!(
-                    "shape tensor '{shape_tensor_name}' not found in shapes_map or constants; \
-                     Expand requires a compile-time constant shape input"
-                ),
-            }
-            .into());
-        }
 
         let output_shape = if let Some(shape) = layer_context.shapes_map.get(output_name.as_str()) {
             shape.clone()
@@ -177,8 +163,8 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ExpandLayer {
                     LayerError::InvalidShape {
                         layer: LayerKind::Expand,
                         msg: format!(
-                            "missing output shape for '{output_name}' and cannot resolve \
-                             shape tensor '{shape_tensor_name}': {e}"
+                            "missing output shape for '{output_name}' and shape tensor \
+                             '{shape_tensor_name}' not resolvable: {e}"
                         ),
                     }
                 })?;

@@ -160,12 +160,16 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GatherElementsLayer
                     let hint_out = api.new_hint(GATHER_ELEMENTS_HINT_KEY, &hint_inputs, 1);
                     let y = hint_out[0];
 
+                    let idx_wrapped = api.add(idx_var, axis_size_var);
                     let mut mux_sum = api.constant(0u32);
                     for (a, &elem) in axis_slice.iter().enumerate() {
                         let a_var = api.constant(a as u32);
-                        let diff = api.sub(idx_var, a_var);
-                        let is_match = api.is_zero(diff);
-                        let selected = api.mul(is_match, elem);
+                        let diff_pos = api.sub(idx_var, a_var);
+                        let match_pos = api.is_zero(diff_pos);
+                        let diff_neg = api.sub(idx_wrapped, a_var);
+                        let match_neg = api.is_zero(diff_neg);
+                        let matched = api.add(match_pos, match_neg);
+                        let selected = api.mul(matched, elem);
                         mux_sum = api.add(mux_sum, selected);
                     }
                     api.assert_is_equal(y, mux_sum);
@@ -298,26 +302,40 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GatherElementsLayer
                 indices_strides[i] = indices_strides[i + 1] * indices_shape[i + 1];
             }
 
+            let axis_len = data_shape[axis] as i64;
             for (flat_idx, idx_entry) in indices_flat.iter().enumerate().take(total_out) {
                 let mut remaining = flat_idx;
-                let mut data_flat = 0usize;
+                let mut data_flat_idx = 0usize;
                 for dim in 0..rank {
                     let coord = remaining / indices_strides[dim];
                     remaining %= indices_strides[dim];
 
                     if dim == axis {
                         let idx_val = *idx_entry;
+                        if idx_val < -axis_len || idx_val >= axis_len {
+                            return Err(LayerError::InvalidShape {
+                                layer: LayerKind::GatherElements,
+                                msg: format!(
+                                    "index {idx_val} at flat position {flat_idx} out of range \
+                                     [{}, {}] for axis {axis} with size {}",
+                                    -axis_len,
+                                    axis_len - 1,
+                                    data_shape[axis]
+                                ),
+                            }
+                            .into());
+                        }
                         let resolved = if idx_val < 0 {
-                            (idx_val + data_shape[axis] as i64) as usize
+                            (idx_val + axis_len) as usize
                         } else {
                             idx_val as usize
                         };
-                        data_flat += resolved * data_strides[dim];
+                        data_flat_idx += resolved * data_strides[dim];
                     } else {
-                        data_flat += coord * data_strides[dim];
+                        data_flat_idx += coord * data_strides[dim];
                     }
                 }
-                flat_index_map.push(data_flat);
+                flat_index_map.push(data_flat_idx);
             }
 
             GatherElementsMode::Precomputed { flat_index_map }
