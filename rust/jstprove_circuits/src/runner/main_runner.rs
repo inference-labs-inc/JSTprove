@@ -2507,9 +2507,10 @@ pub fn get_args() -> clap::ArgMatches {
         )
         .arg(
             Arg::new("curve")
-                .help("Elliptic curve: 'bn254' (default), 'goldilocks', 'goldilocks_basefold', 'goldilocks_whir', or 'goldilocks_whir_pq'")
+                .help("Proof configuration: 'bn254' (default), 'goldilocks', 'goldilocks_basefold', 'goldilocks_whir', or 'goldilocks_whir_pq'. Specifies the field, extension degree, and PCS — not an elliptic curve despite the legacy flag name.")
                 .required(false)
-                .long("curve")
+                .long("proof-config")
+                .visible_alias("curve")
                 .value_parser(["bn254", "goldilocks", "goldilocks_basefold", "goldilocks_whir", "goldilocks_whir_pq"])
                 .default_value("bn254"),
         )

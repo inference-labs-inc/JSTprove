@@ -171,7 +171,7 @@ fn main() {
     let cmd_type = get_arg(&matches, "type").unwrap_or_default();
 
     // Holographic commands bypass the standard ONNX/metadata/config
-    // pipeline — they only need --circuit + --vk + --proof + --curve.
+    // pipeline — they only need --circuit + --vk + --proof + --proof-config.
     if HOLOGRAPHIC_COMMANDS.contains(&cmd_type.as_str()) {
         if let Err(e) = run_holographic(&matches, &cmd_type) {
             eprintln!("Error: {e}");
