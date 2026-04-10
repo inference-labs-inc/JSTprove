@@ -38,12 +38,16 @@ fn read_u64_le(cursor: &mut Cursor<&[u8]>) -> Result<u64, RunError> {
     Ok(u64::from_le_bytes(buf))
 }
 
-fn read_n_bytes(cursor: &mut Cursor<&[u8]>, n: usize) -> Result<Vec<u8>, RunError> {
-    let mut buf = vec![0u8; n];
-    cursor
-        .read_exact(&mut buf)
-        .map_err(|e| RunError::Deserialize(format!("witness field element ({n} bytes): {e}")))?;
-    Ok(buf)
+fn read_field_element<'a>(
+    cursor: &mut Cursor<&[u8]>,
+    buf: &'a mut [u8; 32],
+    elem_size: usize,
+) -> Result<&'a [u8], RunError> {
+    let slice = &mut buf[..elem_size];
+    cursor.read_exact(slice).map_err(|e| {
+        RunError::Deserialize(format!("witness field element ({elem_size} bytes): {e}"))
+    })?;
+    Ok(&buf[..elem_size])
 }
 
 fn read_32_bytes(cursor: &mut Cursor<&[u8]>) -> Result<[u8; 32], RunError> {
@@ -215,9 +219,10 @@ fn parse_public_inputs_from_witness_bytes(
         )));
     }
     let mut values = Vec::with_capacity(total_values);
+    let mut elem_buf = [0u8; 32];
     for _ in 0..total_values {
-        let bytes = read_n_bytes(&mut cursor, elem_size)?;
-        values.push(biguint_from_le_bytes(&bytes));
+        let bytes = read_field_element(&mut cursor, &mut elem_buf, elem_size)?;
+        values.push(biguint_from_le_bytes(bytes));
     }
 
     let public_inputs = values[num_inputs..].to_vec();
