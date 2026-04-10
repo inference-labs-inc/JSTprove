@@ -73,6 +73,11 @@ where
     expander.public_input.clone_from(&simd_public_input);
 
     let mpi_config = MPIConfig::prover_new();
+    if mpi_config.world_size() > 1 {
+        return Err(RunError::Prove(
+            "holographic proving requires single-process (MPI world_size == 1)".to_string(),
+        ));
+    }
 
     let mut prover = gkr::Prover::<C>::new(mpi_config.clone());
     prover.prepare_mem(&expander);

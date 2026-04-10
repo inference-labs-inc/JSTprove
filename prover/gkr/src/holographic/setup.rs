@@ -36,6 +36,9 @@ pub enum SetupError {
     /// One of the per-layer sparse_commit calls rejected its
     /// SparseMle3 input. The layer index pinpoints the source.
     SparseCommit { layer: usize },
+    /// The circuit's random coefficients have not been identified
+    /// via `pre_process_gkr` / `identify_rnd_coefs` before setup.
+    RndCoefsNotIdentified,
 }
 
 impl std::fmt::Display for SetupError {
@@ -44,6 +47,9 @@ impl std::fmt::Display for SetupError {
             Self::WiringExtraction(e) => write!(f, "wiring extraction failed: {e}"),
             Self::SparseCommit { layer } => {
                 write!(f, "sparse_commit rejected layer {layer} wiring")
+            }
+            Self::RndCoefsNotIdentified => {
+                write!(f, "circuit.rnd_coefs not identified before setup")
             }
         }
     }
@@ -492,7 +498,32 @@ where
     }
 
     let log_input_size = circuit.log_input_size();
-    let n_rnd_coefs = circuit.rnd_coefs.len();
+    let n_rnd_coefs = if circuit.rnd_coefs_identified {
+        circuit.rnd_coefs.len()
+    } else {
+        let has_random = circuit.layers.iter().any(|layer| {
+            layer
+                .mul
+                .iter()
+                .any(|g| g.coef_type == circuit::CoefType::Random)
+                || layer
+                    .add
+                    .iter()
+                    .any(|g| g.coef_type == circuit::CoefType::Random)
+                || layer
+                    .uni
+                    .iter()
+                    .any(|g| g.coef_type == circuit::CoefType::Random)
+                || layer
+                    .const_
+                    .iter()
+                    .any(|g| g.coef_type == circuit::CoefType::Random)
+        });
+        if has_random {
+            return Err(SetupError::RndCoefsNotIdentified);
+        }
+        0
+    };
     let vk = HolographicVerifyingKey {
         version: HolographicVerifyingKey::CURRENT_VERSION,
         n_layers,
@@ -693,13 +724,14 @@ mod tests {
         rnd.coef_type = CoefType::Random;
         layer.mul.push(rnd);
         layer.add.push(add_gate(1, 0, 5));
-        let circuit: Circuit<C> = Circuit {
+        let mut circuit: Circuit<C> = Circuit {
             layers: vec![layer],
             public_input: Vec::new(),
             expected_num_output_zeros: 0,
             rnd_coefs_identified: false,
             rnd_coefs: Vec::new(),
         };
+        circuit.identify_rnd_coefs();
         let (_pk, vk) = setup::<C>(circuit).expect("setup must accept random coefs");
         assert_eq!(vk.layers[0].mul_variable_coefs.len(), 1);
     }

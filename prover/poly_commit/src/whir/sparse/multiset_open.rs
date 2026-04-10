@@ -38,19 +38,18 @@ use super::types::{eval_eq_at_index, SparseArity, SparseMleScratchPad};
 
 /// Multiset-argument proof for a single address axis.
 ///
-/// `init_proof` / `rs_proof` / `ws_proof` / `audit_proof` are the
-/// per-set product-circuit GKR transcripts produced by Phase 1c.
 /// `h_init` / `h_rs` / `h_ws` / `h_audit` are the asserted product
 /// hashes — Phase 1c's `prove_product_circuit` returns each as the
 /// transcript-pinned root, so the verifier ties the four product
 /// claims together via `h_init * h_ws == h_rs * h_audit`.
 ///
-/// `mem` is included so the verifier can replay the prover's
-/// per-cell `mẽm[c] = ẽq(c, r_axis)` derivation; per Spartan §7.2.3
-/// optimization (4) the verifier could re-compute it independently,
-/// but transmitting it makes the audit symmetrical with `RS` / `WS`
-/// (and the cost is `2 · m_axis` field elements, dwarfed by the
-/// product-circuit transcripts for any non-trivial `m_axis`).
+/// `init_proof` / `rs_proof` / `ws_proof` / `audit_proof` are the
+/// per-set product-circuit GKR transcripts produced by Phase 1c.
+/// The verifier replays these four proofs to reduce each hash claim
+/// to a leaf-MLE evaluation claim discharged against the committed
+/// constituent polynomials (Phase 1d-4). No `mem` vector is
+/// transmitted — the verifier recomputes it independently per
+/// Spartan §7.2.3 optimization (4).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct PerAxisMultisetProof<F: Field> {
     pub h_init: F,
@@ -181,13 +180,15 @@ fn deserialize_product_proof<F: ExtensionField, R: std::io::Read>(
     const MAX_LAYERS: usize = 64;
     const MAX_ROUNDS_PER_LAYER: usize = 64;
 
-    let n_layers = u64::deserialize_from(&mut reader)? as usize;
+    let n_layers = usize::try_from(u64::deserialize_from(&mut reader)?)
+        .map_err(|_| SerdeError::DeserializeError)?;
     if n_layers > MAX_LAYERS {
         return Err(SerdeError::DeserializeError);
     }
     let mut layers = Vec::with_capacity(n_layers);
     for _ in 0..n_layers {
-        let n_rounds = u64::deserialize_from(&mut reader)? as usize;
+        let n_rounds = usize::try_from(u64::deserialize_from(&mut reader)?)
+            .map_err(|_| SerdeError::DeserializeError)?;
         if n_rounds > MAX_ROUNDS_PER_LAYER {
             return Err(SerdeError::DeserializeError);
         }
