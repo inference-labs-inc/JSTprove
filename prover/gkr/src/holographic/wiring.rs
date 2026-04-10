@@ -112,10 +112,11 @@ pub enum GateKindLabel {
 /// Sparse wiring polynomials for one circuit layer.
 ///
 /// `mul` is the 3-arity wiring polynomial committing the layer's
-/// multiplication gates and `add` is the 2-arity wiring polynomial
-/// committing the addition gates. Either may be `None` if the
-/// corresponding gate list is empty after extraction (no gates of
-/// that kind in the source layer).
+/// multiplication gates, `add` is the 2-arity wiring polynomial
+/// committing the addition gates (including uni-12346 identity
+/// gates), and `const_wiring` is a degenerate 2-arity polynomial
+/// with `n_x = 0` committing the constant gates. Either may be
+/// `None` if the corresponding gate list is empty after extraction.
 #[derive(Debug, Clone)]
 pub struct LayerWiring<F: Field> {
     pub layer_index: usize,
@@ -123,6 +124,10 @@ pub struct LayerWiring<F: Field> {
     pub n_x: usize,
     pub mul: Option<SparseMle3<F>>,
     pub add: Option<SparseMle3<F>>,
+    /// Degenerate 2-arity polynomial for const gates (n_x = 0,
+    /// col_x = [0; nnz]). eval_cst at point z equals the MLE
+    /// evaluation of this polynomial at (z, []).
+    pub const_wiring: Option<SparseMle3<F>>,
 }
 
 /// Sparse wiring polynomials for an entire circuit.
@@ -149,18 +154,8 @@ pub fn extract_layer_mul_wiring<C>(
 where
     C: FieldEngine,
 {
-    if !layer.const_.is_empty() {
-        return Err(WiringExtractError::UnsupportedGateKind {
-            layer: layer_idx,
-            kind: GateKindLabel::Const,
-        });
-    }
-    if !layer.uni.is_empty() {
-        return Err(WiringExtractError::UnsupportedGateKind {
-            layer: layer_idx,
-            kind: GateKindLabel::Uni,
-        });
-    }
+    // const_ and uni gates are handled by separate extractors;
+    // mul only processes layer.mul.
     if layer.mul.is_empty() {
         return Ok(None);
     }
@@ -204,13 +199,12 @@ where
 }
 
 /// Extract the 2-arity sparse wiring polynomial committing the
-/// `add` gates of `layer`. Returns `Ok(None)` if the gate list is
-/// empty.
+/// `add` gates of `layer`, plus any uni-12346 (identity-with-coef)
+/// gates which are semantically equivalent to add gates. Returns
+/// `Ok(None)` if the combined list is empty.
 ///
-/// Each `add` gate `(o_id, [i_x], coef)` becomes a non-zero entry
-/// `A(o_id, i_x) += coef`. The y axis is collapsed via
-/// `SparseArity::Two` so the resulting polynomial has only `n_z +
-/// n_x` variables.
+/// Uni-12345 (x^5 S-box) gates are NOT promotable to add and are
+/// rejected with [`WiringExtractError::UnsupportedGateKind`].
 pub fn extract_layer_add_wiring<C>(
     layer: &CircuitLayer<C>,
     layer_idx: usize,
@@ -218,35 +212,57 @@ pub fn extract_layer_add_wiring<C>(
 where
     C: FieldEngine,
 {
-    if !layer.const_.is_empty() {
-        return Err(WiringExtractError::UnsupportedGateKind {
-            layer: layer_idx,
-            kind: GateKindLabel::Const,
-        });
+    // Count uni-12346 (identity) gates that we'll promote to add.
+    // Reject uni-12345 (x^5) since it needs a custom sumcheck.
+    let mut uni_identity_count = 0usize;
+    for (gate_idx, gate) in layer.uni.iter().enumerate() {
+        match gate.gate_type {
+            12346 => {
+                check_constant_coef(gate.coef_type, layer_idx, gate_idx, GateKindLabel::Uni)?;
+                uni_identity_count += 1;
+            }
+            12345 => {
+                return Err(WiringExtractError::UnsupportedGateKind {
+                    layer: layer_idx,
+                    kind: GateKindLabel::Uni,
+                });
+            }
+            _ => {
+                return Err(WiringExtractError::UnsupportedGateKind {
+                    layer: layer_idx,
+                    kind: GateKindLabel::Uni,
+                });
+            }
+        }
     }
-    if !layer.uni.is_empty() {
-        return Err(WiringExtractError::UnsupportedGateKind {
-            layer: layer_idx,
-            kind: GateKindLabel::Uni,
-        });
-    }
-    if layer.add.is_empty() {
+
+    let total = layer.add.len() + uni_identity_count;
+    if total == 0 {
         return Ok(None);
     }
 
     let n_z = layer.output_var_num;
     let n_x = layer.input_var_num;
 
-    let row_capacity = layer.add.len().next_power_of_two();
+    let row_capacity = total.next_power_of_two();
     let mut row = Vec::with_capacity(row_capacity);
     let mut col_x = Vec::with_capacity(row_capacity);
     let mut val = Vec::with_capacity(row_capacity);
+
     for (gate_idx, gate) in layer.add.iter().enumerate() {
         check_constant_coef(gate.coef_type, layer_idx, gate_idx, GateKindLabel::Add)?;
         row.push(gate.o_id);
         col_x.push(gate.i_ids[0]);
         val.push(gate.coef);
     }
+    for gate in &layer.uni {
+        if gate.gate_type == 12346 {
+            row.push(gate.o_id);
+            col_x.push(gate.i_ids[0]);
+            val.push(gate.coef);
+        }
+    }
+
     pad_to_power_of_two_2::<C::CircuitField>(&mut row, &mut col_x, &mut val);
     let col_y = vec![0usize; row.len()];
 
@@ -270,6 +286,61 @@ where
     Ok(Some(poly))
 }
 
+/// Extract the degenerate 2-arity constant-gate wiring polynomial.
+/// `n_x = 0`, `col_x = [0; nnz]` — the "input" axis is trivially
+/// a single point. Returns `Ok(None)` if the layer has no constant
+/// gates (Constant coef type only; PublicInput coef types are
+/// rejected).
+pub fn extract_layer_const_wiring<C>(
+    layer: &CircuitLayer<C>,
+    layer_idx: usize,
+) -> Result<Option<SparseMle3<C::CircuitField>>, WiringExtractError>
+where
+    C: FieldEngine,
+{
+    if layer.const_.is_empty() {
+        return Ok(None);
+    }
+
+    let n_z = layer.output_var_num;
+
+    let row_capacity = layer.const_.len().next_power_of_two();
+    let mut row = Vec::with_capacity(row_capacity);
+    let mut val = Vec::with_capacity(row_capacity);
+    for (gate_idx, gate) in layer.const_.iter().enumerate() {
+        check_constant_coef(gate.coef_type, layer_idx, gate_idx, GateKindLabel::Const)?;
+        row.push(gate.o_id);
+        val.push(gate.coef);
+    }
+    // Pad row + val to power of two; col_x and col_y are all-zero.
+    let target = row.len().next_power_of_two();
+    while row.len() < target {
+        row.push(0);
+        val.push(C::CircuitField::ZERO);
+    }
+    let col_x = vec![0usize; row.len()];
+    let col_y = vec![0usize; row.len()];
+
+    let poly = SparseMle3 {
+        n_z,
+        n_x: 0,
+        n_y: 0,
+        arity: SparseArity::Two,
+        row,
+        col_x,
+        col_y,
+        val,
+    };
+    poly.validate()
+        .map_err(|_| WiringExtractError::LayerDimensionsTooLarge {
+            layer: layer_idx,
+            n_z,
+            n_x: 0,
+            n_y: 0,
+        })?;
+    Ok(Some(poly))
+}
+
 /// Extract the wiring polynomials for every layer of `circuit`.
 ///
 /// Returns a [`CircuitWiring`] aggregating the per-layer
@@ -288,12 +359,14 @@ where
     for (layer_idx, layer) in circuit.layers.iter().enumerate() {
         let mul = extract_layer_mul_wiring::<C>(layer, layer_idx)?;
         let add = extract_layer_add_wiring::<C>(layer, layer_idx)?;
+        let const_wiring = extract_layer_const_wiring::<C>(layer, layer_idx)?;
         layers.push(LayerWiring {
             layer_index: layer_idx,
             n_z: layer.output_var_num,
             n_x: layer.input_var_num,
             mul,
             add,
+            const_wiring,
         });
     }
     Ok(CircuitWiring { layers })
@@ -503,7 +576,7 @@ mod tests {
     }
 
     #[test]
-    fn extract_rejects_const_gates() {
+    fn extract_const_gates_as_degenerate_add() {
         use circuit::GateConst;
         let mut layer = make_layer(2, 2);
         layer.const_.push(GateConst {
@@ -513,19 +586,50 @@ mod tests {
             coef: Goldilocks::ONE,
             gate_type: 0,
         });
+        layer.const_.push(GateConst {
+            i_ids: [],
+            o_id: 3,
+            coef_type: CoefType::Constant,
+            coef: Goldilocks::from(7u64),
+            gate_type: 0,
+        });
+        // mul extraction should not be affected by const_
         layer.mul.push(mul_gate(0, 1, 2, 1));
-        let err = extract_layer_mul_wiring::<C>(&layer, 4).unwrap_err();
-        assert!(matches!(
-            err,
-            WiringExtractError::UnsupportedGateKind {
-                layer: 4,
-                kind: GateKindLabel::Const,
-            }
-        ));
+        let mul = extract_layer_mul_wiring::<C>(&layer, 0).unwrap();
+        assert!(mul.is_some());
+
+        // const extraction produces a degenerate polynomial
+        let const_poly = extract_layer_const_wiring::<C>(&layer, 0).unwrap().unwrap();
+        assert_eq!(const_poly.arity, SparseArity::Two);
+        assert_eq!(const_poly.n_x, 0);
+        assert_eq!(const_poly.n_z, 2);
+        // nnz padded to 2 (next pow2 of 2)
+        assert_eq!(const_poly.nnz(), 2);
+        assert_eq!(const_poly.row[0..2], [0, 3]);
+        assert_eq!(const_poly.col_x[0..2], [0, 0]);
     }
 
     #[test]
-    fn extract_rejects_uni_gates() {
+    fn extract_uni_identity_promoted_to_add() {
+        use circuit::GateUni;
+        let mut layer = make_layer(2, 2);
+        layer.uni.push(GateUni {
+            i_ids: [2],
+            o_id: 1,
+            coef_type: CoefType::Constant,
+            coef: Goldilocks::from(5u64),
+            gate_type: 12346,
+        });
+        layer.add.push(add_gate(0, 3, 11));
+        let add_poly = extract_layer_add_wiring::<C>(&layer, 0).unwrap().unwrap();
+        // 1 add + 1 uni-12346 = 2 entries → padded to 2
+        assert_eq!(add_poly.nnz(), 2);
+        assert_eq!(add_poly.row[0], 0); // from add gate
+        assert_eq!(add_poly.row[1], 1); // from uni-12346
+    }
+
+    #[test]
+    fn extract_rejects_uni_x5_gates() {
         use circuit::GateUni;
         let mut layer = make_layer(2, 2);
         layer.uni.push(GateUni {

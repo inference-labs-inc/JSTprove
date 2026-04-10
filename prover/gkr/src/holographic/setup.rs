@@ -297,6 +297,7 @@ where
             n_x,
             mul,
             add,
+            const_wiring: _const_wiring,
         } = layer_wiring;
 
         let mul_committed = if let Some(poly) = mul {
