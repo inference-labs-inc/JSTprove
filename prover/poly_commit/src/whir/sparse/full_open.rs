@@ -437,7 +437,5 @@ mod tests {
             opening.evalclaim.claimed_eval
         );
         assert_eq!(decoded.eval_commitment.arity, opening.eval_commitment.arity);
-        assert_eq!(decoded.multiset.gamma_1, opening.multiset.gamma_1);
-        assert_eq!(decoded.multiset.gamma_2, opening.multiset.gamma_2);
     }
 }

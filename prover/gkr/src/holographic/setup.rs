@@ -306,6 +306,10 @@ impl ExpSerde for HolographicVerifyingKey {
             return Err(SerdeError::DeserializeError);
         }
         let log_input_size = u64::deserialize_from(&mut reader)? as usize;
+        const MAX_LOG_INPUT_SIZE: usize = 32;
+        if log_input_size > MAX_LOG_INPUT_SIZE {
+            return Err(SerdeError::DeserializeError);
+        }
         let n_rnd_coefs = u64::deserialize_from(&mut reader)? as usize;
         let mut layers = Vec::with_capacity(n_layers);
         for _ in 0..n_layers {

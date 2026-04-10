@@ -122,8 +122,6 @@ pub struct SparseMultisetOpening<F: Field> {
 
 impl<F: ExtensionField> ExpSerde for SparseMultisetOpening<F> {
     fn serialize_into<W: std::io::Write>(&self, mut writer: W) -> SerdeResult<()> {
-        self.gamma_1.serialize_into(&mut writer)?;
-        self.gamma_2.serialize_into(&mut writer)?;
         self.axis_z.serialize_into(&mut writer)?;
         self.axis_x.serialize_into(&mut writer)?;
         let has_y: u8 = if self.axis_y.is_some() { 1 } else { 0 };
@@ -135,8 +133,6 @@ impl<F: ExtensionField> ExpSerde for SparseMultisetOpening<F> {
     }
 
     fn deserialize_from<R: std::io::Read>(mut reader: R) -> SerdeResult<Self> {
-        let gamma_1 = F::deserialize_from(&mut reader)?;
-        let gamma_2 = F::deserialize_from(&mut reader)?;
         let axis_z = PerAxisMultisetProof::deserialize_from(&mut reader)?;
         let axis_x = PerAxisMultisetProof::deserialize_from(&mut reader)?;
         let has_y = u8::deserialize_from(&mut reader)?;
@@ -146,8 +142,8 @@ impl<F: ExtensionField> ExpSerde for SparseMultisetOpening<F> {
             _ => return Err(SerdeError::DeserializeError),
         };
         Ok(Self {
-            gamma_1,
-            gamma_2,
+            gamma_1: F::ZERO,
+            gamma_2: F::ZERO,
             axis_z,
             axis_x,
             axis_y,
@@ -651,8 +647,6 @@ mod tests {
         let decoded =
             SparseMultisetOpening::<GoldilocksExt3>::deserialize_from(&bytes[..]).unwrap();
 
-        assert_eq!(decoded.gamma_1, opening.gamma_1);
-        assert_eq!(decoded.gamma_2, opening.gamma_2);
         assert_eq!(decoded.axis_z.h_init, opening.axis_z.h_init);
         assert_eq!(decoded.axis_z.h_rs, opening.axis_z.h_rs);
         assert_eq!(decoded.axis_z.h_ws, opening.axis_z.h_ws);
@@ -684,7 +678,6 @@ mod tests {
         let decoded =
             SparseMultisetOpening::<GoldilocksExt4>::deserialize_from(&bytes[..]).unwrap();
 
-        assert_eq!(decoded.gamma_1, opening.gamma_1);
         assert!(decoded.axis_y.is_some());
         let dy = decoded.axis_y.unwrap();
         let oy = opening.axis_y.unwrap();

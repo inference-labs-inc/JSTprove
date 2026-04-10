@@ -235,10 +235,6 @@ where
             &mut gkr_cursor,
         );
 
-    if !gkr_verified {
-        return Ok(false);
-    }
-
     let mut holo_transcript = <C as GKREngine>::TranscriptConfig::new();
     let holo_eval_points =
         build_holo_eval_points_from_gkr_proof::<C>(&vk, &combined, proving_time_mpi_size)?;
@@ -254,9 +250,10 @@ where
         &mut holo_transcript,
     );
 
-    if let Err(e) = holo_verify_result {
-        return Err(RunError::Verify(format!("holographic verify: {e}")));
-    }
+    let holo_verified = match holo_verify_result {
+        Ok(()) => true,
+        Err(e) => return Err(RunError::Verify(format!("holographic verify: {e}"))),
+    };
 
     let (pcs_params, _, pcs_verification_key, _) = expander_pcs_init_testing_only::<
         <C as GKREngine>::FieldConfig,
@@ -289,7 +286,7 @@ where
         );
     }
 
-    Ok(verified)
+    Ok(gkr_verified & holo_verified & verified)
 }
 
 #[allow(
@@ -518,14 +515,18 @@ where
         let add_x = rx.clone();
         let rz_0_copy = rz_0;
 
-        let mul_claim = claims.eval_mul;
-        let add_claim = claims.eval_add;
+        let eq_simd_mpi = sp.eq_r_simd_r_simd_xy * sp.eq_r_mpi_r_mpi_xy;
+        let eq_simd_mpi_inv = eq_simd_mpi
+            .inv()
+            .ok_or_else(|| RunError::Verify("eq_simd * eq_mpi is zero".to_string()))?;
+        let mul_claim = claims.eval_mul * eq_simd_mpi_inv;
+        let add_claim = claims.eval_add * eq_simd_mpi_inv;
 
         let uni_z = rz_0_copy.clone();
         let uni_x = rx.clone();
-        let uni_claim = claims.eval_uni;
+        let uni_claim = claims.eval_uni * eq_simd_mpi_inv;
         let cst_z = rz_0_copy;
-        let cst_claim = claims.eval_cst;
+        let cst_claim = claims.eval_cst * eq_simd_mpi_inv;
 
         per_layer_points.push(gkr::holographic::LayerEvalPoint {
             layer_index: i,

@@ -147,6 +147,8 @@ where
     let mut rounds = Vec::with_capacity(log_nnz);
     let mut running_claim = claimed_v;
 
+    transcript.append_field_element(&claimed_v);
+
     for _ in 0..log_nnz {
         let half = val_table.len() / 2;
 
@@ -248,6 +250,7 @@ pub fn verify_eval_sumcheck<E: ExtensionField>(
     }
 
     let mut running_claim = claimed_v;
+    transcript.append_field_element(&claimed_v);
     let mut challenges = Vec::with_capacity(log_nnz);
     for round in &proof.rounds {
         if round.evals.len() != d + 1 {

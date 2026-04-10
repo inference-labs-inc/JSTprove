@@ -170,8 +170,8 @@ pub fn prove_product_circuit<E: ExtensionField>(
     let levels = build_product_tree::<E>(leaves);
     let root = levels.last().unwrap()[0];
 
-    // The current claim is `L_l(point) = current_claim` for the
-    // current layer l (initially the root, l = k, point of length 0).
+    transcript.append_field_element(&root);
+
     let mut current_layer = k;
     let mut current_point: Vec<E> = Vec::new();
     let mut current_claim = root;
@@ -329,6 +329,8 @@ pub fn verify_product_circuit<E: ExtensionField>(
     if proof.layers.len() != log_n {
         return None;
     }
+
+    transcript.append_field_element(&claimed_root);
 
     let mut current_layer = log_n;
     let mut current_point: Vec<E> = Vec::new();
