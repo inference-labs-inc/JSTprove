@@ -115,7 +115,25 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for TransposeLayer {
         })?;
 
         // Structural passthrough: select elements by the precomputed index map.
-        let out_flat: Vec<Variable> = self.index_map.iter().map(|&idx| data_flat[idx]).collect();
+        let input_len = data_flat.len();
+        let out_flat: Vec<Variable> = self
+            .index_map
+            .iter()
+            .enumerate()
+            .map(|(out_pos, &idx)| {
+                if idx >= input_len {
+                    return Err(LayerError::InvalidShape {
+                        layer: LayerKind::Transpose,
+                        msg: format!(
+                            "index_map[{out_pos}] = {idx} out of bounds for input length {input_len}; \
+                             input shape may be inconsistent with the shape used during circuit compilation"
+                        ),
+                    }
+                    .into());
+                }
+                Ok(data_flat[idx])
+            })
+            .collect::<Result<Vec<_>, CircuitError>>()?;
 
         let out_array =
             ArrayD::from_shape_vec(IxDyn(&self.output_shape), out_flat).map_err(|e| {
@@ -236,6 +254,19 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for TransposeLayer {
         }
 
         let index_map = build_index_map(&input_shape, &perm);
+
+        let total_in: usize = input_shape.iter().product();
+        if let Some((pos, &idx)) = index_map.iter().enumerate().find(|&(_, &i)| i >= total_in) {
+            return Err(LayerError::Other {
+                layer: LayerKind::Transpose,
+                msg: format!(
+                    "layer '{}': index_map[{pos}] = {idx} >= total input elements {total_in} \
+                     (input_shape={input_shape:?}, perm={perm:?})",
+                    layer.name
+                ),
+            }
+            .into());
+        }
 
         Ok(Box::new(Self {
             inputs: layer.inputs.clone(),
