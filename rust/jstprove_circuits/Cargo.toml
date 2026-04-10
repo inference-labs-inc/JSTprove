@@ -53,6 +53,13 @@ tempfile = "3"
 criterion = { version = "0.5", features = ["html_reports"] }
 libc = "0.2"
 rayon.workspace = true
+circuit.workspace = true
+goldilocks.workspace = true
+serdes.workspace = true
+transcript.workspace = true
+gkr_hashers.workspace = true
+rand_chacha = { workspace = true }
+jstprove-io = { path = "../jstprove_io" }
 
 [[bench]]
 name = "serialization"
