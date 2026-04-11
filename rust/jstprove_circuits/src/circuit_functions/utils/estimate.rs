@@ -123,19 +123,16 @@ fn resolve_shape<'a, S: BuildHasher>(
 
 fn estimate_linear<S: BuildHasher>(
     input_names: &[String],
+    output_names: &[String],
     shapes: &HashMap<String, Vec<usize>, S>,
     out_elems: u64,
     rescale_queries: u64,
     config: &EstimationConfig,
 ) -> (u64, u64, u64) {
     let in0_shape = input_names.first().and_then(|n| resolve_shape(n, shapes));
-    let in1_shape = input_names.get(1).and_then(|n| resolve_shape(n, shapes));
-    let out_shape = shapes
-        .get(input_names.first().map_or("", String::as_str))
-        .or(in0_shape);
-    let _ = out_shape;
-    let (ell, m, n) = matmul_dims(in0_shape, in1_shape);
-    let batch = matmul_batch(in0_shape, in1_shape);
+    let out_shape = output_names.first().and_then(|n| resolve_shape(n, shapes));
+    let (ell, m, n) = matmul_dims(in0_shape, out_shape);
+    let batch = matmul_batch_from_output(out_shape, ell, n);
     let arith = batch.saturating_mul(matmul_cost(ell, m, n, config.freivalds_reps));
     (out_elems, arith, rescale_queries)
 }
@@ -280,9 +277,14 @@ fn estimate_single_op<S: BuildHasher>(
     };
 
     match op_type {
-        "MatMul" | "Gemm" => {
-            estimate_linear(input_names, shapes, out_elems, rescale_queries, config)
-        }
+        "MatMul" | "Gemm" => estimate_linear(
+            input_names,
+            output_names,
+            shapes,
+            out_elems,
+            rescale_queries,
+            config,
+        ),
 
         "Conv" | "ConvTranspose" => estimate_conv(input_names, shapes, out_elems, rescale_queries),
 
@@ -363,8 +365,8 @@ fn estimate_single_op<S: BuildHasher>(
     }
 }
 
-fn matmul_dims(a_shape: Option<&Vec<usize>>, b_shape: Option<&Vec<usize>>) -> (u64, u64, u64) {
-    let (ell, m_a) = a_shape.map_or((1, 1), |s| {
+fn matmul_dims(a_shape: Option<&Vec<usize>>, out_shape: Option<&Vec<usize>>) -> (u64, u64, u64) {
+    let (ell, inner) = a_shape.map_or((1, 1), |s| {
         let rank = s.len();
         if rank >= 2 {
             (s[rank - 2] as u64, s[rank - 1] as u64)
@@ -374,35 +376,19 @@ fn matmul_dims(a_shape: Option<&Vec<usize>>, b_shape: Option<&Vec<usize>>) -> (u
             (1, 1)
         }
     });
-    let n = b_shape.map_or(m_a, |s| {
+    let cols = out_shape.map_or(inner, |s| {
         let rank = s.len();
-        if rank >= 2 {
-            s[rank - 1] as u64
-        } else if rank == 1 {
-            s[0] as u64
-        } else {
-            1
-        }
+        if rank >= 1 { s[rank - 1] as u64 } else { 1 }
     });
-    (ell, m_a, n)
+    (ell, inner, cols)
 }
 
-fn matmul_batch(a_shape: Option<&Vec<usize>>, b_shape: Option<&Vec<usize>>) -> u64 {
-    let a_batch: u64 = a_shape.map_or(1, |s| {
-        if s.len() > 2 {
-            s[..s.len() - 2].iter().map(|&d| d.max(1) as u64).product()
-        } else {
-            1
-        }
-    });
-    let b_batch: u64 = b_shape.map_or(1, |s| {
-        if s.len() > 2 {
-            s[..s.len() - 2].iter().map(|&d| d.max(1) as u64).product()
-        } else {
-            1
-        }
-    });
-    a_batch.max(b_batch)
+fn matmul_batch_from_output(out_shape: Option<&Vec<usize>>, ell: u64, cols: u64) -> u64 {
+    out_shape.map_or(1, |s| {
+        let total = product(s);
+        let per_batch = ell.saturating_mul(cols).max(1);
+        total / per_batch
+    })
 }
 
 #[must_use]
