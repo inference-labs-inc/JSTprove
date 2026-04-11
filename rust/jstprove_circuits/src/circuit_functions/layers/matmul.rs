@@ -359,13 +359,13 @@ impl MatMulLayer {
         let b_batch_dims = &b_shape[..b_rank - 2];
         let a_batch: usize = a_batch_dims.iter().product::<usize>().max(1);
         let b_batch: usize = b_batch_dims.iter().product::<usize>().max(1);
-        let b_is_batched = b_batch > 1;
+        let b_is_batched = !b_batch_dims.is_empty();
 
         // Validate that batch dimensions match element-wise, not just by
         // flattened product. [2,3,...] vs [1,6,...] both flatten to 6 but
         // pair wrong slices. Allow broadcasting when one side has no batch
         // dims (rank-2 input).
-        if b_is_batched && a_batch > 1 && a_batch_dims != b_batch_dims {
+        if b_is_batched && !a_batch_dims.is_empty() && a_batch_dims != b_batch_dims {
             return Err(LayerError::ShapeMismatch {
                 layer: LayerKind::MatMul,
                 expected: a_batch_dims.to_vec(),
@@ -758,6 +758,44 @@ mod tests {
             1,2,3,4, 5,6,7,8,
             1,0,0,0, 0,1,0,0,
         ];
+        assert_eq!(extract_values(&mut api, &out), expected_fields(expected));
+    }
+
+    #[test]
+    fn runtime_rank2_a_singleton_batch_b() {
+        // A: [2, 3] × B: [1, 3, 4] → [1, 2, 4]
+        // B has a singleton batch dim that must be preserved in output.
+        let mut shapes_map = HashMap::new();
+        shapes_map.insert("a".to_string(), vec![2, 3]);
+        shapes_map.insert("b".to_string(), vec![1, 3, 4]);
+        shapes_map.insert("y".to_string(), vec![1, 2, 4]);
+
+        let built = matmul_layer(vec!["a".to_string(), "b".to_string()], &shapes_map)
+            .expect("build should succeed for rank-2 × rank-3 singleton batch");
+
+        let (mut api, _, _) = TestBuilder::new(vec![], vec![], EmptyHintCaller::new());
+
+        // A = [[1,0,0],[0,1,0]] (identity-like 2×3)
+        #[rustfmt::skip]
+        let a_vals: Vec<u32> = vec![1,0,0, 0,1,0];
+        // B[0] = [[1,2,3,4],[5,6,7,8],[9,10,11,12]]
+        #[rustfmt::skip]
+        let b_vals: Vec<u32> = vec![1,2,3,4, 5,6,7,8, 9,10,11,12];
+
+        let mut inputs = HashMap::new();
+        inputs.insert("a".to_string(), tensor_vars(&mut api, &a_vals, &[2, 3]));
+        inputs.insert("b".to_string(), tensor_vars(&mut api, &b_vals, &[1, 3, 4]));
+        let mut logup_ctx = LogupRangeCheckContext::new_default();
+
+        let (_, out) = built
+            .apply(&mut api, &mut logup_ctx, &inputs)
+            .expect("apply should succeed");
+
+        assert_eq!(out.shape(), &[1, 2, 4]);
+
+        // [[1,0,0],[0,1,0]] @ [[1,2,3,4],[5,6,7,8],[9,10,11,12]] = [[1,2,3,4],[5,6,7,8]]
+        #[rustfmt::skip]
+        let expected: &[u32] = &[1,2,3,4, 5,6,7,8];
         assert_eq!(extract_values(&mut api, &out), expected_fields(expected));
     }
 
