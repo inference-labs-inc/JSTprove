@@ -14,6 +14,10 @@ use crate::runner::errors::RunError;
 use crate::runner::schema::{CompiledCircuit, WitnessBundle, WitnessRequest};
 use crate::runner::verify_extract::{ExtractedOutput, VerifiedOutput};
 
+pub use crate::circuit_functions::utils::estimate::{
+    CircuitEstimate, EstimationConfig, LayerEstimate, estimate_circuit, estimate_from_layers,
+    estimate_op_constraints,
+};
 pub use crate::circuit_functions::utils::onnx_model::{
     Architecture as ArchitectureType, CircuitParams as CircuitParamsType, WANDB as WANDBType,
 };
