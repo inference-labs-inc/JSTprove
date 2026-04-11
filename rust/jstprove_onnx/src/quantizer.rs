@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use anyhow::Result;
 
@@ -135,8 +136,14 @@ pub fn quantize_model(mut graph: LayerGraph, config: &ScaleConfig) -> Result<Qua
 
     let n_bits_config = compute_bounds(&graph, config)?;
 
+    // Cache of already-quantized tensors keyed by initializer name.
+    // When multiple layers share the same initializer (e.g. tied weights),
+    // only the first layer performs the float→int conversion; subsequent
+    // layers receive an Arc::clone pointing to the same allocation, which
+    // also guarantees identical quantization parameters across all uses.
+    let mut weight_cache: HashMap<String, Arc<TensorData>> = HashMap::new();
     for layer in &mut graph.layers {
-        quantize_layer_weights(layer, alpha)?;
+        quantize_layer_weights(layer, alpha, &mut weight_cache)?;
     }
 
     for layer in &mut graph.layers {
@@ -150,24 +157,52 @@ pub fn quantize_model(mut graph: LayerGraph, config: &ScaleConfig) -> Result<Qua
     })
 }
 
-fn quantize_layer_weights(layer: &mut LayerNode, alpha: i64) -> Result<()> {
+fn quantize_layer_weights(
+    layer: &mut LayerNode,
+    alpha: i64,
+    cache: &mut HashMap<String, Arc<TensorData>>,
+) -> Result<()> {
     let scale_plan = ops::get_scale_plan(layer.op_type);
 
     for (&input_pos, &scale_factor) in &scale_plan {
-        if let Some(input_name) = layer.inputs.get(input_pos) {
-            if let Some(weight) = layer.weights.get_mut(input_name) {
-                if !weight.float_data.is_empty() {
-                    let factor = alpha.pow(scale_factor as u32);
-                    let scaled: Vec<i64> = weight
-                        .float_data
-                        .iter()
-                        .map(|v| (*v * factor as f64).round() as i64)
-                        .collect();
-                    weight.int_data = scaled;
-                    weight.float_data.clear();
-                }
-            }
+        let Some(input_name) = layer.inputs.get(input_pos).cloned() else {
+            continue;
+        };
+
+        // Shared initializer already quantized by an earlier layer: reuse the
+        // cached Arc so all layers point to the same allocation with the same
+        // quantization parameters.
+        if let Some(cached) = cache.get(&input_name) {
+            layer.weights.insert(input_name, Arc::clone(cached));
+            continue;
         }
+
+        let Some(weight) = layer.weights.get(&input_name) else {
+            continue;
+        };
+
+        if weight.float_data.is_empty() {
+            // Already in integer form (e.g. pre-quantized int tensor); nothing to do.
+            continue;
+        }
+
+        let factor = alpha.pow(scale_factor as u32);
+        let scaled: Vec<i64> = weight
+            .float_data
+            .iter()
+            .map(|v| (*v * factor as f64).round() as i64)
+            .collect();
+
+        let quantized = Arc::new(TensorData {
+            name: weight.name.clone(),
+            dims: weight.dims.clone(),
+            data_type: weight.data_type,
+            float_data: vec![],
+            int_data: scaled,
+        });
+
+        cache.insert(input_name.clone(), Arc::clone(&quantized));
+        layer.weights.insert(input_name, quantized);
     }
 
     Ok(())
@@ -256,23 +291,23 @@ fn fold_batchnorm_params(layer: &mut LayerNode) -> Result<()> {
 
     layer.weights.insert(
         mul_tensor_name.clone(),
-        TensorData {
+        Arc::new(TensorData {
             name: mul_tensor_name.clone(),
             dims: vec![c as i64],
             data_type: 1,
             float_data: mul,
             int_data: vec![],
-        },
+        }),
     );
     layer.weights.insert(
         add_tensor_name.clone(),
-        TensorData {
+        Arc::new(TensorData {
             name: add_tensor_name.clone(),
             dims: vec![c as i64],
             data_type: 1,
             float_data: add,
             int_data: vec![],
-        },
+        }),
     );
 
     let stale = [scale_name, bias_name, mean_name, var_name];
