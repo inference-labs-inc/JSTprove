@@ -213,8 +213,51 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GemmLayer {
             self.freivalds_reps,
         )?;
 
-        // Add bias (constrained) on top of the core product.
-        let result = matrix_addition(api, &core_product, bias_array, LayerKind::Gemm)?;
+        // ONNX Gemm broadcasts bias C to match the core product shape.
+        // Bias may be scalar, [N], or [1, N]; core_product is [M, N].
+        let target = core_product.shape();
+        let bias_broadcast = if bias_array.shape() == target {
+            bias_array
+        } else if core_product.ndim() == 2 {
+            let rows = target[0];
+            let cols = target[1];
+            // Reshape bias to [1, cols] then tile across rows.
+            let row: Vec<Variable> = if bias_array.len() == cols {
+                bias_array.iter().copied().collect()
+            } else if bias_array.len() == 1 {
+                vec![
+                    bias_array
+                        .iter()
+                        .next()
+                        .copied()
+                        .unwrap_or_else(|| api.constant(0));
+                    cols
+                ]
+            } else {
+                return Err(LayerError::InvalidShape {
+                    layer: LayerKind::Gemm,
+                    msg: format!(
+                        "bias length {} incompatible with core_product cols {cols} for layer {}",
+                        bias_array.len(),
+                        self.name
+                    ),
+                }
+                .into());
+            };
+            let flat: Vec<Variable> = (0..rows).flat_map(|_| row.iter().copied()).collect();
+            ndarray::ArrayD::from_shape_vec(ndarray::IxDyn(&[rows, cols]), flat).map_err(|_| {
+                LayerError::InvalidShape {
+                    layer: LayerKind::Gemm,
+                    msg: format!(
+                        "bias broadcast to [{rows}, {cols}] failed for layer {}",
+                        self.name
+                    ),
+                }
+            })?
+        } else {
+            bias_array
+        };
+        let result = matrix_addition(api, &core_product, bias_broadcast, LayerKind::Gemm)?;
 
         let out_array = maybe_rescale(
             api,
