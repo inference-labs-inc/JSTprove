@@ -7,7 +7,7 @@ pub use traits::{BatchOpeningPCS, PolynomialCommitmentScheme};
 pub const PCS_SOUNDNESS_BITS: usize = 128;
 
 mod utils;
-pub use utils::expander_pcs_init_testing_only;
+pub use utils::{expander_pcs_init, expander_pcs_init_testing_only};
 
 pub mod raw;
 pub use raw::RawExpanderGKR;

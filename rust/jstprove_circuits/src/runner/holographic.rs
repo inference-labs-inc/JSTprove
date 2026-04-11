@@ -9,7 +9,7 @@ use expander_compiler::serdes::ExpSerde;
 use gkr::holographic::combined_proof::{CombinedHolographicProof, PerLayerWiringClaims};
 use gkr::holographic::setup::HolographicVerifyingKey;
 use gkr::verifier::holographic_gkr::{HolographicLayerInput, holographic_gkr_verify};
-use poly_commit::expander_pcs_init_testing_only;
+use poly_commit::{expander_pcs_init, expander_pcs_init_testing_only};
 
 use crate::runner::errors::RunError;
 use crate::runner::main_runner::{auto_decompress_bytes, load_circuit_from_bytes};
@@ -248,12 +248,11 @@ where
         Err(e) => return Err(RunError::Verify(format!("holographic verify: {e}"))),
     };
 
-    let (pcs_params, _, pcs_verification_key, _) = expander_pcs_init_testing_only::<
-        <C as GKREngine>::FieldConfig,
-        <C as GKREngine>::PCSConfig,
-    >(
-        vk.log_input_size, &MPIConfig::verifier_new(1)
-    );
+    let (pcs_params, _, pcs_verification_key, _) =
+        expander_pcs_init::<<C as GKREngine>::FieldConfig, <C as GKREngine>::PCSConfig>(
+            vk.log_input_size,
+            &MPIConfig::verifier_new(1),
+        );
 
     let mut challenge_x = challenge.challenge_x();
     let mut verified = verify_pcs_opening::<C>(

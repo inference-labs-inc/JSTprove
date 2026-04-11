@@ -1,7 +1,6 @@
 use std::sync::Arc;
 
 use arith::ExtensionField;
-use ethnum::U256;
 use serdes::{ExpSerde, SerdeResult};
 use tree::{Node, Path, Tree};
 
@@ -78,32 +77,32 @@ pub struct WhirOpening<F: ExtensionField> {
 
 impl<F: ExtensionField> ExpSerde for WhirOpening<F> {
     fn serialize_into<W: std::io::Write>(&self, mut writer: W) -> SerdeResult<()> {
-        U256::from(self.round_commitments.len() as u64).serialize_into(&mut writer)?;
+        (self.round_commitments.len() as u64).serialize_into(&mut writer)?;
         for n in &self.round_commitments {
             n.serialize_into(&mut writer)?;
         }
-        U256::from(self.sumcheck_messages.len() as u64).serialize_into(&mut writer)?;
+        (self.sumcheck_messages.len() as u64).serialize_into(&mut writer)?;
         for m in &self.sumcheck_messages {
             m.serialize_into(&mut writer)?;
         }
-        U256::from(self.ood_evaluations.len() as u64).serialize_into(&mut writer)?;
+        (self.ood_evaluations.len() as u64).serialize_into(&mut writer)?;
         for evals in &self.ood_evaluations {
-            U256::from(evals.len() as u64).serialize_into(&mut writer)?;
+            (evals.len() as u64).serialize_into(&mut writer)?;
             for e in evals {
                 e.serialize_into(&mut writer)?;
             }
         }
-        U256::from(self.pow_nonces.len() as u64).serialize_into(&mut writer)?;
+        (self.pow_nonces.len() as u64).serialize_into(&mut writer)?;
         for &n in &self.pow_nonces {
             n.serialize_into(&mut writer)?;
         }
-        U256::from(self.final_poly.len() as u64).serialize_into(&mut writer)?;
+        (self.final_poly.len() as u64).serialize_into(&mut writer)?;
         for f in &self.final_poly {
             f.serialize_into(&mut writer)?;
         }
-        U256::from(self.round_query_proofs.len() as u64).serialize_into(&mut writer)?;
+        (self.round_query_proofs.len() as u64).serialize_into(&mut writer)?;
         for round_proofs in &self.round_query_proofs {
-            U256::from(round_proofs.len() as u64).serialize_into(&mut writer)?;
+            (round_proofs.len() as u64).serialize_into(&mut writer)?;
             for qp in round_proofs {
                 qp.serialize_into(&mut writer)?;
             }
@@ -116,7 +115,7 @@ impl<F: ExtensionField> ExpSerde for WhirOpening<F> {
         const MAX_QUERIES_PER_ROUND: usize = 1 << 16;
         const MAX_FINAL_POLY: usize = 1 << 20;
 
-        let rc_len = U256::deserialize_from(&mut reader)?.as_usize();
+        let rc_len = u64::deserialize_from(&mut reader)? as usize;
         if rc_len > MAX_ROUNDS {
             return Err(serdes::SerdeError::DeserializeError);
         }
@@ -124,7 +123,7 @@ impl<F: ExtensionField> ExpSerde for WhirOpening<F> {
         for _ in 0..rc_len {
             round_commitments.push(Node::deserialize_from(&mut reader)?);
         }
-        let sm_len = U256::deserialize_from(&mut reader)?.as_usize();
+        let sm_len = u64::deserialize_from(&mut reader)? as usize;
         if sm_len > MAX_SUMCHECK {
             return Err(serdes::SerdeError::DeserializeError);
         }
@@ -134,13 +133,13 @@ impl<F: ExtensionField> ExpSerde for WhirOpening<F> {
                 &mut reader,
             )?);
         }
-        let ood_len = U256::deserialize_from(&mut reader)?.as_usize();
+        let ood_len = u64::deserialize_from(&mut reader)? as usize;
         if ood_len > MAX_ROUNDS {
             return Err(serdes::SerdeError::DeserializeError);
         }
         let mut ood_evaluations = Vec::with_capacity(ood_len);
         for _ in 0..ood_len {
-            let e_len = U256::deserialize_from(&mut reader)?.as_usize();
+            let e_len = u64::deserialize_from(&mut reader)? as usize;
             if e_len > MAX_SUMCHECK {
                 return Err(serdes::SerdeError::DeserializeError);
             }
@@ -150,7 +149,7 @@ impl<F: ExtensionField> ExpSerde for WhirOpening<F> {
             }
             ood_evaluations.push(evals);
         }
-        let pn_len = U256::deserialize_from(&mut reader)?.as_usize();
+        let pn_len = u64::deserialize_from(&mut reader)? as usize;
         if pn_len > MAX_ROUNDS {
             return Err(serdes::SerdeError::DeserializeError);
         }
@@ -158,7 +157,7 @@ impl<F: ExtensionField> ExpSerde for WhirOpening<F> {
         for _ in 0..pn_len {
             pow_nonces.push(u64::deserialize_from(&mut reader)?);
         }
-        let fp_len = U256::deserialize_from(&mut reader)?.as_usize();
+        let fp_len = u64::deserialize_from(&mut reader)? as usize;
         if fp_len > MAX_FINAL_POLY {
             return Err(serdes::SerdeError::DeserializeError);
         }
@@ -166,13 +165,13 @@ impl<F: ExtensionField> ExpSerde for WhirOpening<F> {
         for _ in 0..fp_len {
             final_poly.push(F::deserialize_from(&mut reader)?);
         }
-        let rq_len = U256::deserialize_from(&mut reader)?.as_usize();
+        let rq_len = u64::deserialize_from(&mut reader)? as usize;
         if rq_len > MAX_ROUNDS {
             return Err(serdes::SerdeError::DeserializeError);
         }
         let mut round_query_proofs = Vec::with_capacity(rq_len);
         for _ in 0..rq_len {
-            let q_len = U256::deserialize_from(&mut reader)?.as_usize();
+            let q_len = u64::deserialize_from(&mut reader)? as usize;
             if q_len > MAX_QUERIES_PER_ROUND {
                 return Err(serdes::SerdeError::DeserializeError);
             }

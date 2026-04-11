@@ -1,18 +1,9 @@
 use std::sync::Arc;
 
 use arith::ExtensionField;
-use ethnum::U256;
 use serdes::{ExpSerde, SerdeResult};
 use tree::{Node, Path, Tree};
 
-// Proven FRI/Basefold security (Johnson bound, ePrint 2024/1571):
-//   bits_per_query = log2(1/sqrt(rho)) = RATE_LOG / 2
-//   total_proven_bits = NUM_QUERIES * RATE_LOG / 2
-//
-// With RATE_LOG=2 (rho=1/4) and 128 queries: 128 * 2 / 2 = 128 bits proven.
-// The proximity gap conjecture (capacity bound) was disproved in Nov 2025
-// (ePrint 2025/2046, 2024/1351), so proven bounds at the Johnson bound are
-// the conservative baseline.
 pub const RATE_LOG: usize = 2;
 pub const BASEFOLD_NUM_QUERIES: usize = (crate::PCS_SOUNDNESS_BITS * 2 + RATE_LOG - 1) / RATE_LOG;
 
@@ -91,26 +82,22 @@ pub struct BasefoldOpening<F: ExtensionField> {
 
 impl<F: ExtensionField> ExpSerde for BasefoldOpening<F> {
     fn serialize_into<W: std::io::Write>(&self, mut writer: W) -> SerdeResult<()> {
-        let len = U256::from(self.round_commitments.len() as u64);
-        len.serialize_into(&mut writer)?;
+        (self.round_commitments.len() as u64).serialize_into(&mut writer)?;
         for node in &self.round_commitments {
             node.serialize_into(&mut writer)?;
         }
 
-        let slen = U256::from(self.sumcheck_messages.len() as u64);
-        slen.serialize_into(&mut writer)?;
+        (self.sumcheck_messages.len() as u64).serialize_into(&mut writer)?;
         for msg in &self.sumcheck_messages {
             msg.serialize_into(&mut writer)?;
         }
 
-        let flen = U256::from(self.final_poly.len() as u64);
-        flen.serialize_into(&mut writer)?;
+        (self.final_poly.len() as u64).serialize_into(&mut writer)?;
         for f in &self.final_poly {
             f.serialize_into(&mut writer)?;
         }
 
-        let qlen = U256::from(self.query_proofs.len() as u64);
-        qlen.serialize_into(&mut writer)?;
+        (self.query_proofs.len() as u64).serialize_into(&mut writer)?;
         for qp in &self.query_proofs {
             qp.serialize_into(&mut writer)?;
         }
@@ -119,25 +106,25 @@ impl<F: ExtensionField> ExpSerde for BasefoldOpening<F> {
     }
 
     fn deserialize_from<R: std::io::Read>(mut reader: R) -> SerdeResult<Self> {
-        let len = U256::deserialize_from(&mut reader)?.as_usize();
+        let len = u64::deserialize_from(&mut reader)? as usize;
         let mut round_commitments = Vec::with_capacity(len);
         for _ in 0..len {
             round_commitments.push(Node::deserialize_from(&mut reader)?);
         }
 
-        let slen = U256::deserialize_from(&mut reader)?.as_usize();
+        let slen = u64::deserialize_from(&mut reader)? as usize;
         let mut sumcheck_messages = Vec::with_capacity(slen);
         for _ in 0..slen {
             sumcheck_messages.push(SumcheckRoundMessage::deserialize_from(&mut reader)?);
         }
 
-        let flen = U256::deserialize_from(&mut reader)?.as_usize();
+        let flen = u64::deserialize_from(&mut reader)? as usize;
         let mut final_poly = Vec::with_capacity(flen);
         for _ in 0..flen {
             final_poly.push(F::deserialize_from(&mut reader)?);
         }
 
-        let qlen = U256::deserialize_from(&mut reader)?.as_usize();
+        let qlen = u64::deserialize_from(&mut reader)? as usize;
         let mut query_proofs = Vec::with_capacity(qlen);
         for _ in 0..qlen {
             query_proofs.push(FriQueryProof::deserialize_from(&mut reader)?);
@@ -163,8 +150,7 @@ impl<F: ExtensionField> ExpSerde for FriQueryProof<F> {
     fn serialize_into<W: std::io::Write>(&self, mut writer: W) -> SerdeResult<()> {
         self.initial_leaf_proof.serialize_into(&mut writer)?;
         self.initial_sibling_proof.serialize_into(&mut writer)?;
-        let len = U256::from(self.round_proofs.len() as u64);
-        len.serialize_into(&mut writer)?;
+        (self.round_proofs.len() as u64).serialize_into(&mut writer)?;
         for rp in &self.round_proofs {
             rp.serialize_into(&mut writer)?;
         }
@@ -174,7 +160,7 @@ impl<F: ExtensionField> ExpSerde for FriQueryProof<F> {
     fn deserialize_from<R: std::io::Read>(mut reader: R) -> SerdeResult<Self> {
         let initial_leaf_proof = Path::deserialize_from(&mut reader)?;
         let initial_sibling_proof = Path::deserialize_from(&mut reader)?;
-        let len = U256::deserialize_from(&mut reader)?.as_usize();
+        let len = u64::deserialize_from(&mut reader)? as usize;
         let mut round_proofs = Vec::with_capacity(len);
         for _ in 0..len {
             round_proofs.push(FriRoundProof::deserialize_from(&mut reader)?);
@@ -199,13 +185,11 @@ impl<F: ExtensionField> ExpSerde for FriRoundProof<F> {
     fn serialize_into<W: std::io::Write>(&self, mut writer: W) -> SerdeResult<()> {
         self.leaf_proof.serialize_into(&mut writer)?;
         self.sibling_proof.serialize_into(&mut writer)?;
-        let llen = U256::from(self.leaf_values.len() as u64);
-        llen.serialize_into(&mut writer)?;
+        (self.leaf_values.len() as u64).serialize_into(&mut writer)?;
         for v in &self.leaf_values {
             v.serialize_into(&mut writer)?;
         }
-        let slen = U256::from(self.sibling_values.len() as u64);
-        slen.serialize_into(&mut writer)?;
+        (self.sibling_values.len() as u64).serialize_into(&mut writer)?;
         for v in &self.sibling_values {
             v.serialize_into(&mut writer)?;
         }
@@ -215,12 +199,12 @@ impl<F: ExtensionField> ExpSerde for FriRoundProof<F> {
     fn deserialize_from<R: std::io::Read>(mut reader: R) -> SerdeResult<Self> {
         let leaf_proof = Path::deserialize_from(&mut reader)?;
         let sibling_proof = Path::deserialize_from(&mut reader)?;
-        let llen = U256::deserialize_from(&mut reader)?.as_usize();
+        let llen = u64::deserialize_from(&mut reader)? as usize;
         let mut leaf_values = Vec::with_capacity(llen);
         for _ in 0..llen {
             leaf_values.push(F::deserialize_from(&mut reader)?);
         }
-        let slen = U256::deserialize_from(&mut reader)?.as_usize();
+        let slen = u64::deserialize_from(&mut reader)? as usize;
         let mut sibling_values = Vec::with_capacity(slen);
         for _ in 0..slen {
             sibling_values.push(F::deserialize_from(&mut reader)?);
