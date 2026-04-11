@@ -27,6 +27,9 @@ pub mod setup;
 pub mod verify;
 pub mod wiring;
 
+#[cfg(test)]
+mod adversarial_tests;
+
 pub use challenge_extract::{
     build_eval_points_from_challenges, extract_gkr_layer_challenges, ChallengeExtraction,
     PerLayerChallenge,
