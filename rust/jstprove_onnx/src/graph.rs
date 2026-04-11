@@ -193,6 +193,17 @@ impl LayerGraph {
         let initializer_names: std::collections::HashSet<&str> =
             model.initializers.keys().map(String::as_str).collect();
 
+        let mut constant_outputs: HashMap<String, TensorData> = HashMap::new();
+        for node in &model.nodes {
+            if node.op_type == "Constant" {
+                if let Some(AttrValue::Tensor(td)) = node.attributes.get("value") {
+                    for out_name in &node.outputs {
+                        constant_outputs.insert(out_name.clone(), td.clone());
+                    }
+                }
+            }
+        }
+
         let mut layers = Vec::new();
 
         for (idx, node) in model.nodes.iter().enumerate() {
@@ -201,6 +212,8 @@ impl LayerGraph {
             let mut weights = HashMap::new();
             for input_name in &node.inputs {
                 if let Some(td) = model.initializers.get(input_name) {
+                    weights.insert(input_name.clone(), td.clone());
+                } else if let Some(td) = constant_outputs.get(input_name) {
                     weights.insert(input_name.clone(), td.clone());
                 }
             }

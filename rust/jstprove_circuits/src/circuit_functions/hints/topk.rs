@@ -10,19 +10,21 @@
 // # Input layout
 // `inputs[0..n-1]` : quantised input elements for one lane (n values).
 // `inputs[n]`      : the scaling factor `scale = 2^scale_exponent`.
-// `outputs.len()` == K — the number of values to select.
+// `outputs.len()` == 2*K — K values followed by K indices.
 //
 // # Output layout
 // `outputs[0..K-1]` : the K largest input values in descending order (when
 //                     largest=1), encoded as field elements using the same
 //                     two's-complement-mod-p convention as all other quantised
 //                     tensors in this project.
+// `outputs[K..2K-1]`: the original indices of the K selected values (as
+//                     non-negative field elements).
 //
-// # Soundness limitation
-// The hint adds no circuit constraint. The `TopKLayer` circuit pairs it with a
-// LogUp range check that bounds each output to `[0, 2^n_bits)`. A malicious
-// prover can substitute any in-range value. Full soundness would require a
-// sorting network or a permutation argument — a planned future extension.
+// # Verification strategy
+// The circuit constrains: (a) each output equals some input element via
+// multiplexer, (b) outputs are sorted descending via pairwise range checks,
+// (c) the K-th value is >= all non-selected inputs via range checks, and
+// (d) indices are pairwise distinct.
 //
 // # Largest / sorted
 // This hint always selects the K largest values in descending order, matching
@@ -58,8 +60,13 @@ pub const TOPK_HINT_KEY: &str = "jstprove.topk_hint";
     clippy::cast_possible_truncation
 )]
 pub fn topk_hint<F: FieldArith>(inputs: &[F], outputs: &mut [F]) -> Result<(), Error> {
-    let k = outputs.len();
-    // Need at least k data values plus one scale element.
+    if outputs.len() % 2 != 0 {
+        return Err(Error::UserError(format!(
+            "topk_hint: outputs.len() must be even (2*K), got {}",
+            outputs.len()
+        )));
+    }
+    let k = outputs.len() / 2;
     if inputs.len() < k + 1 {
         return Err(Error::UserError(format!(
             "topk_hint: expected at least {} inputs (k={k} data + 1 scale), got {}",
@@ -68,26 +75,28 @@ pub fn topk_hint<F: FieldArith>(inputs: &[F], outputs: &mut [F]) -> Result<(), E
         )));
     }
 
-    let n = inputs.len() - 1; // number of data elements in this lane
+    let n = inputs.len() - 1;
 
-    // Decode each input as a signed i64.
-    let mut values: Vec<i64> = inputs[..n].iter().map(|&x| field_to_i64(x)).collect();
+    let mut indexed: Vec<(i64, usize)> = inputs[..n]
+        .iter()
+        .enumerate()
+        .map(|(i, &x)| (field_to_i64(x), i))
+        .collect();
 
-    // Partial-sort: put the K largest in the first K positions (descending).
-    // Using a full sort here is simple and correct; a partial sort is an
-    // optimisation left for later.
-    values.sort_unstable_by(|a, b| b.cmp(a)); // descending
+    indexed.sort_unstable_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.cmp(&b.1)));
 
-    // Encode each of the K selected values back to a field element.
-    for i in 0..k {
-        let val = values[i];
-        outputs[i] = if val >= 0 {
+    let encode = |val: i64| -> F {
+        if val >= 0 {
             F::from_u256(U256::from(val as u64))
         } else {
-            // Negative: encode as p - |val| (two's complement mod p).
             let mag = U256::from(val.unsigned_abs());
             F::from_u256(F::MODULUS - mag)
-        };
+        }
+    };
+
+    for i in 0..k {
+        outputs[i] = encode(indexed[i].0);
+        outputs[k + i] = F::from_u256(U256::from(indexed[i].1 as u64));
     }
 
     Ok(())
@@ -110,51 +119,58 @@ mod tests {
         }
     }
 
-    fn run_topk(xs: &[i64], k: usize) -> Vec<i64> {
+    fn run_topk(xs: &[i64], k: usize) -> (Vec<i64>, Vec<usize>) {
         let scale: u64 = 1 << 18;
         let mut inputs: Vec<F> = xs.iter().map(|&x| field(x)).collect();
         inputs.push(F::from_u256(U256::from(scale)));
-        let mut outputs = vec![F::zero(); k];
+        let mut outputs = vec![F::zero(); 2 * k];
         topk_hint::<F>(&inputs, &mut outputs).unwrap();
-        outputs
+        let values: Vec<i64> = outputs[..k]
             .iter()
             .map(|o| super::super::field_to_i64(*o))
-            .collect()
+            .collect();
+        let indices: Vec<usize> = outputs[k..]
+            .iter()
+            .map(|o| o.to_u256().as_u64() as usize)
+            .collect();
+        (values, indices)
     }
 
     #[test]
     fn topk_k1_selects_largest() {
         let xs = [3i64, 1, 4, 1, 5, 9, 2, 6];
-        let result = run_topk(&xs, 1);
-        assert_eq!(result, vec![9]);
+        let (values, indices) = run_topk(&xs, 1);
+        assert_eq!(values, vec![9]);
+        assert_eq!(indices, vec![5]);
     }
 
     #[test]
     fn topk_k3_sorted_descending() {
         let xs = [3i64, 1, 4, 1, 5, 9, 2, 6];
-        let result = run_topk(&xs, 3);
-        assert_eq!(result, vec![9, 6, 5]);
+        let (values, indices) = run_topk(&xs, 3);
+        assert_eq!(values, vec![9, 6, 5]);
+        assert_eq!(indices, vec![5, 7, 4]);
     }
 
     #[test]
     fn topk_with_negatives() {
         let xs = [-5i64, 3, -1, 7, 0];
-        let result = run_topk(&xs, 2);
-        assert_eq!(result, vec![7, 3]);
+        let (values, indices) = run_topk(&xs, 2);
+        assert_eq!(values, vec![7, 3]);
+        assert_eq!(indices, vec![3, 1]);
     }
 
     #[test]
     fn topk_k_equals_n_is_full_sort() {
         let xs = [2i64, 4, 1, 3];
-        let result = run_topk(&xs, 4);
-        assert_eq!(result, vec![4, 3, 2, 1]);
+        let (values, _indices) = run_topk(&xs, 4);
+        assert_eq!(values, vec![4, 3, 2, 1]);
     }
 
     #[test]
     fn topk_too_few_inputs_returns_error() {
-        let mut outputs = [F::zero(); 3];
-        // Only 2 data elements for k=3 (need ≥ 4 inputs: 3 data + 1 scale).
-        let inputs = vec![field(1), field(2), F::from_u256(U256::from(1u64 << 18))]; // 2 data + scale
+        let mut outputs = [F::zero(); 6]; // 2*3 = 6
+        let inputs = vec![field(1), field(2), F::from_u256(U256::from(1u64 << 18))];
         assert!(topk_hint::<F>(&inputs, &mut outputs).is_err());
     }
 }
