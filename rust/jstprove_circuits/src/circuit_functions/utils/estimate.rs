@@ -564,7 +564,7 @@ mod tests {
             &[vec![1, 16, 30, 30]],
             &config,
         );
-        let out_elems: u64 = 1 * 16 * 30 * 30;
+        let out_elems: u64 = 16 * 30 * 30;
         let kernel_vol: u64 = 3 * 3;
         let c_per_group: u64 = 3;
         let inner = kernel_vol * c_per_group;
