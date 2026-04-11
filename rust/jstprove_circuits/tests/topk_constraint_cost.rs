@@ -26,7 +26,7 @@ impl TopKBench {
         }
 
         thread_local! {
-            static PARAMS: std::cell::RefCell<Params> = std::cell::RefCell::new(Params { n: 0, k: 0, n_bits: 0 });
+            static PARAMS: std::cell::RefCell<Params> = const { std::cell::RefCell::new(Params { n: 0, k: 0, n_bits: 0 }) };
         }
 
         PARAMS.with(|p| {
@@ -84,8 +84,8 @@ impl TopKBench {
                         );
                     }
 
-                    for j in 0..k {
-                        api.assert_is_zero(membership_prods[j]);
+                    for prod in membership_prods.iter().take(k) {
+                        api.assert_is_zero(*prod);
                     }
 
                     for j in 0..k.saturating_sub(1) {
@@ -127,7 +127,7 @@ fn run_constrained_max_bench(n: usize, n_bits: usize) {
         n_bits: usize,
     }
     thread_local! {
-        static MAX_PARAMS: std::cell::RefCell<MaxParams> = std::cell::RefCell::new(MaxParams { n: 0, n_bits: 0 });
+        static MAX_PARAMS: std::cell::RefCell<MaxParams> = const { std::cell::RefCell::new(MaxParams { n: 0, n_bits: 0 }) };
     }
     MAX_PARAMS.with(|p| {
         *p.borrow_mut() = MaxParams { n, n_bits };
