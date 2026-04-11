@@ -106,25 +106,46 @@ impl<F: ExtensionField> ExpSerde for BasefoldOpening<F> {
     }
 
     fn deserialize_from<R: std::io::Read>(mut reader: R) -> SerdeResult<Self> {
-        let len = u64::deserialize_from(&mut reader)? as usize;
+        const MAX_ROUNDS: u64 = 64;
+        const MAX_SUMCHECK: u64 = 256;
+        const MAX_FINAL_POLY: u64 = 1 << 20;
+        const MAX_QUERIES: u64 = 1 << 16;
+
+        let len = u64::deserialize_from(&mut reader)?;
+        if len > MAX_ROUNDS {
+            return Err(serdes::SerdeError::DeserializeError);
+        }
+        let len = len as usize;
         let mut round_commitments = Vec::with_capacity(len);
         for _ in 0..len {
             round_commitments.push(Node::deserialize_from(&mut reader)?);
         }
 
-        let slen = u64::deserialize_from(&mut reader)? as usize;
+        let slen = u64::deserialize_from(&mut reader)?;
+        if slen > MAX_SUMCHECK {
+            return Err(serdes::SerdeError::DeserializeError);
+        }
+        let slen = slen as usize;
         let mut sumcheck_messages = Vec::with_capacity(slen);
         for _ in 0..slen {
             sumcheck_messages.push(SumcheckRoundMessage::deserialize_from(&mut reader)?);
         }
 
-        let flen = u64::deserialize_from(&mut reader)? as usize;
+        let flen = u64::deserialize_from(&mut reader)?;
+        if flen > MAX_FINAL_POLY {
+            return Err(serdes::SerdeError::DeserializeError);
+        }
+        let flen = flen as usize;
         let mut final_poly = Vec::with_capacity(flen);
         for _ in 0..flen {
             final_poly.push(F::deserialize_from(&mut reader)?);
         }
 
-        let qlen = u64::deserialize_from(&mut reader)? as usize;
+        let qlen = u64::deserialize_from(&mut reader)?;
+        if qlen > MAX_QUERIES {
+            return Err(serdes::SerdeError::DeserializeError);
+        }
+        let qlen = qlen as usize;
         let mut query_proofs = Vec::with_capacity(qlen);
         for _ in 0..qlen {
             query_proofs.push(FriQueryProof::deserialize_from(&mut reader)?);
@@ -158,9 +179,14 @@ impl<F: ExtensionField> ExpSerde for FriQueryProof<F> {
     }
 
     fn deserialize_from<R: std::io::Read>(mut reader: R) -> SerdeResult<Self> {
+        const MAX_ROUNDS: u64 = 64;
         let initial_leaf_proof = Path::deserialize_from(&mut reader)?;
         let initial_sibling_proof = Path::deserialize_from(&mut reader)?;
-        let len = u64::deserialize_from(&mut reader)? as usize;
+        let len = u64::deserialize_from(&mut reader)?;
+        if len > MAX_ROUNDS {
+            return Err(serdes::SerdeError::DeserializeError);
+        }
+        let len = len as usize;
         let mut round_proofs = Vec::with_capacity(len);
         for _ in 0..len {
             round_proofs.push(FriRoundProof::deserialize_from(&mut reader)?);
@@ -197,14 +223,23 @@ impl<F: ExtensionField> ExpSerde for FriRoundProof<F> {
     }
 
     fn deserialize_from<R: std::io::Read>(mut reader: R) -> SerdeResult<Self> {
+        const MAX_VALUES: u64 = 1 << 16;
         let leaf_proof = Path::deserialize_from(&mut reader)?;
         let sibling_proof = Path::deserialize_from(&mut reader)?;
-        let llen = u64::deserialize_from(&mut reader)? as usize;
+        let llen = u64::deserialize_from(&mut reader)?;
+        if llen > MAX_VALUES {
+            return Err(serdes::SerdeError::DeserializeError);
+        }
+        let llen = llen as usize;
         let mut leaf_values = Vec::with_capacity(llen);
         for _ in 0..llen {
             leaf_values.push(F::deserialize_from(&mut reader)?);
         }
-        let slen = u64::deserialize_from(&mut reader)? as usize;
+        let slen = u64::deserialize_from(&mut reader)?;
+        if slen > MAX_VALUES {
+            return Err(serdes::SerdeError::DeserializeError);
+        }
+        let slen = slen as usize;
         let mut sibling_values = Vec::with_capacity(slen);
         for _ in 0..slen {
             sibling_values.push(F::deserialize_from(&mut reader)?);

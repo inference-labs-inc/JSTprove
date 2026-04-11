@@ -110,71 +110,79 @@ impl<F: ExtensionField> ExpSerde for WhirOpening<F> {
         Ok(())
     }
     fn deserialize_from<R: std::io::Read>(mut reader: R) -> SerdeResult<Self> {
-        const MAX_ROUNDS: usize = 64;
-        const MAX_SUMCHECK: usize = 256;
-        const MAX_QUERIES_PER_ROUND: usize = 1 << 16;
-        const MAX_FINAL_POLY: usize = 1 << 20;
+        const MAX_ROUNDS: u64 = 64;
+        const MAX_SUMCHECK: u64 = 256;
+        const MAX_QUERIES_PER_ROUND: u64 = 1 << 16;
+        const MAX_FINAL_POLY: u64 = 1 << 20;
 
-        let rc_len = u64::deserialize_from(&mut reader)? as usize;
+        let rc_len = u64::deserialize_from(&mut reader)?;
         if rc_len > MAX_ROUNDS {
             return Err(serdes::SerdeError::DeserializeError);
         }
+        let rc_len = rc_len as usize;
         let mut round_commitments = Vec::with_capacity(rc_len);
         for _ in 0..rc_len {
             round_commitments.push(Node::deserialize_from(&mut reader)?);
         }
-        let sm_len = u64::deserialize_from(&mut reader)? as usize;
+        let sm_len = u64::deserialize_from(&mut reader)?;
         if sm_len > MAX_SUMCHECK {
             return Err(serdes::SerdeError::DeserializeError);
         }
+        let sm_len = sm_len as usize;
         let mut sumcheck_messages = Vec::with_capacity(sm_len);
         for _ in 0..sm_len {
             sumcheck_messages.push(crate::basefold::SumcheckRoundMessage::deserialize_from(
                 &mut reader,
             )?);
         }
-        let ood_len = u64::deserialize_from(&mut reader)? as usize;
+        let ood_len = u64::deserialize_from(&mut reader)?;
         if ood_len > MAX_ROUNDS {
             return Err(serdes::SerdeError::DeserializeError);
         }
+        let ood_len = ood_len as usize;
         let mut ood_evaluations = Vec::with_capacity(ood_len);
         for _ in 0..ood_len {
-            let e_len = u64::deserialize_from(&mut reader)? as usize;
+            let e_len = u64::deserialize_from(&mut reader)?;
             if e_len > MAX_SUMCHECK {
                 return Err(serdes::SerdeError::DeserializeError);
             }
+            let e_len = e_len as usize;
             let mut evals = Vec::with_capacity(e_len);
             for _ in 0..e_len {
                 evals.push(F::deserialize_from(&mut reader)?);
             }
             ood_evaluations.push(evals);
         }
-        let pn_len = u64::deserialize_from(&mut reader)? as usize;
+        let pn_len = u64::deserialize_from(&mut reader)?;
         if pn_len > MAX_ROUNDS {
             return Err(serdes::SerdeError::DeserializeError);
         }
+        let pn_len = pn_len as usize;
         let mut pow_nonces = Vec::with_capacity(pn_len);
         for _ in 0..pn_len {
             pow_nonces.push(u64::deserialize_from(&mut reader)?);
         }
-        let fp_len = u64::deserialize_from(&mut reader)? as usize;
+        let fp_len = u64::deserialize_from(&mut reader)?;
         if fp_len > MAX_FINAL_POLY {
             return Err(serdes::SerdeError::DeserializeError);
         }
+        let fp_len = fp_len as usize;
         let mut final_poly = Vec::with_capacity(fp_len);
         for _ in 0..fp_len {
             final_poly.push(F::deserialize_from(&mut reader)?);
         }
-        let rq_len = u64::deserialize_from(&mut reader)? as usize;
+        let rq_len = u64::deserialize_from(&mut reader)?;
         if rq_len > MAX_ROUNDS {
             return Err(serdes::SerdeError::DeserializeError);
         }
+        let rq_len = rq_len as usize;
         let mut round_query_proofs = Vec::with_capacity(rq_len);
         for _ in 0..rq_len {
-            let q_len = u64::deserialize_from(&mut reader)? as usize;
+            let q_len = u64::deserialize_from(&mut reader)?;
             if q_len > MAX_QUERIES_PER_ROUND {
                 return Err(serdes::SerdeError::DeserializeError);
             }
+            let q_len = q_len as usize;
             let mut proofs = Vec::with_capacity(q_len);
             for _ in 0..q_len {
                 proofs.push(WhirRoundQueryProof::deserialize_from(&mut reader)?);
