@@ -122,33 +122,54 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for TopKLayer {
                 let values = &hint_out[..k];
                 let indices = &hint_out[k..];
 
-                for j in 0..k {
-                    let idx_var = indices[j];
-                    let val_var = values[j];
+                let mut mux_sums: Vec<Variable> = (0..k).map(|_| api.constant(0u32)).collect();
+                let mut matched_counts: Vec<Variable> =
+                    (0..k).map(|_| api.constant(0u32)).collect();
+                let min_val = values[k - 1];
 
-                    let mut mux_sum = api.constant(0u32);
-                    let mut matched_sum = api.constant(0u32);
-                    for (a, &elem) in lane.iter().enumerate() {
-                        let a_var = api.constant(a as u32);
-                        let diff = api.sub(idx_var, a_var);
+                for (a, &elem) in lane.iter().enumerate() {
+                    let a_var = api.constant(a as u32);
+                    let mut is_sel = api.constant(0u32);
+
+                    for j in 0..k {
+                        let diff = api.sub(indices[j], a_var);
                         let eq = api.is_zero(diff);
                         let selected = api.mul(eq, elem);
-                        mux_sum = api.add(mux_sum, selected);
-                        matched_sum = api.add(matched_sum, eq);
+                        mux_sums[j] = api.add(mux_sums[j], selected);
+                        matched_counts[j] = api.add(matched_counts[j], eq);
+                        is_sel = api.add(is_sel, eq);
                     }
-                    let one = api.constant(1u32);
-                    api.assert_is_equal(matched_sum, one);
-                    api.assert_is_equal(val_var, mux_sum);
+
+                    let delta = api.sub(min_val, elem);
+                    let delta_shifted = api.add(delta, offset);
+                    let one_c = api.constant(1u32);
+                    let not_sel = api.sub(one_c, is_sel);
+                    let check_val = api.mul(not_sel, delta_shifted);
+                    let filler = api.mul(is_sel, offset);
+                    let final_check = api.add(check_val, filler);
 
                     logup_ctx
-                        .range_check::<C, Builder>(api, val_var, self.n_bits)
+                        .range_check::<C, Builder>(api, final_check, shift_n_bits)
+                        .map_err(|e| LayerError::Other {
+                            layer: LayerKind::TopK,
+                            msg: format!("top-K bound range check failed: {e}"),
+                        })?;
+                }
+
+                let one = api.constant(1u32);
+                for j in 0..k {
+                    api.assert_is_equal(matched_counts[j], one);
+                    api.assert_is_equal(values[j], mux_sums[j]);
+
+                    logup_ctx
+                        .range_check::<C, Builder>(api, values[j], self.n_bits)
                         .map_err(|e| LayerError::Other {
                             layer: LayerKind::TopK,
                             msg: format!("range check on output value failed: {e}"),
                         })?;
 
                     let out_idx = (o * k + j) * inner + inr;
-                    out_flat[out_idx] = val_var;
+                    out_flat[out_idx] = values[j];
                 }
 
                 for j in 0..k.saturating_sub(1) {
@@ -169,33 +190,6 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for TopKLayer {
                         let zero = api.constant(0u32);
                         api.assert_is_equal(is_eq, zero);
                     }
-                }
-
-                let min_val = values[k - 1];
-                for (a, &elem) in lane.iter().enumerate() {
-                    let a_var = api.constant(a as u32);
-                    let mut is_sel = api.constant(0u32);
-                    for idx_var in &indices[..k] {
-                        let diff = api.sub(*idx_var, a_var);
-                        let eq = api.is_zero(diff);
-                        is_sel = api.add(is_sel, eq);
-                    }
-
-                    let delta = api.sub(min_val, elem);
-                    let delta_shifted = api.add(delta, offset);
-
-                    let one_const = api.constant(1u32);
-                    let not_sel = api.sub(one_const, is_sel);
-                    let check_val = api.mul(not_sel, delta_shifted);
-                    let filler = api.mul(is_sel, offset);
-                    let final_check = api.add(check_val, filler);
-
-                    logup_ctx
-                        .range_check::<C, Builder>(api, final_check, shift_n_bits)
-                        .map_err(|e| LayerError::Other {
-                            layer: LayerKind::TopK,
-                            msg: format!("top-K bound range check failed: {e}"),
-                        })?;
                 }
             }
         }
