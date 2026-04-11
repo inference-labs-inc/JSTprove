@@ -122,6 +122,17 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GatherElementsLayer
                         })?;
 
                 let rank = self.data_shape.len();
+                if indices_shape.len() != rank {
+                    return Err(LayerError::InvalidShape {
+                        layer: LayerKind::GatherElements,
+                        msg: format!(
+                            "indices rank {} != data rank {rank} at apply time",
+                            indices_shape.len()
+                        ),
+                    }
+                    .into());
+                }
+
                 let mut data_strides = vec![1usize; rank];
                 for i in (0..rank - 1).rev() {
                     data_strides[i] = data_strides[i + 1] * self.data_shape[i + 1];
@@ -173,6 +184,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GatherElementsLayer
 
                     let idx_wrapped = api.add(idx_var, axis_size_var);
                     let mut mux_sum = api.constant(0u32);
+                    let mut matched_sum = api.constant(0u32);
                     for (a, &elem) in axis_slice.iter().enumerate() {
                         let a_var = api.constant(a as u32);
                         let diff_pos = api.sub(idx_var, a_var);
@@ -182,7 +194,10 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GatherElementsLayer
                         let matched = api.add(match_pos, match_neg);
                         let selected = api.mul(matched, elem);
                         mux_sum = api.add(mux_sum, selected);
+                        matched_sum = api.add(matched_sum, matched);
                     }
+                    let one = api.constant(1u32);
+                    api.assert_is_equal(matched_sum, one);
                     api.assert_is_equal(y, mux_sum);
 
                     logup_ctx.range_check::<C, Builder>(api, y, *n_bits)?;
@@ -292,6 +307,17 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GatherElementsLayer
 
         let mode = if let Ok(indices_array) = get_w_or_b_or_constant(layer_context, indices_name) {
             let indices_shape = indices_array.shape().to_vec();
+            if indices_shape.len() != rank {
+                return Err(LayerError::InvalidShape {
+                    layer: LayerKind::GatherElements,
+                    msg: format!(
+                        "indices rank {} must equal data rank {rank} (indices_shape={indices_shape:?}, \
+                         data_shape={data_shape:?})",
+                        indices_shape.len()
+                    ),
+                }
+                .into());
+            }
             let indices_flat =
                 indices_array
                     .as_slice()
@@ -359,6 +385,18 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GatherElementsLayer
                     msg: format!("missing indices shape for '{indices_name}'"),
                 })?
                 .clone();
+
+            if indices_shape.len() != rank {
+                return Err(LayerError::InvalidShape {
+                    layer: LayerKind::GatherElements,
+                    msg: format!(
+                        "indices rank {} must equal data rank {rank} (indices_shape={indices_shape:?}, \
+                         data_shape={data_shape:?})",
+                        indices_shape.len()
+                    ),
+                }
+                .into());
+            }
 
             let n_bits = layer_context.n_bits_for(&layer.name);
 
