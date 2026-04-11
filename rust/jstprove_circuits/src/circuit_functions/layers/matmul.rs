@@ -358,6 +358,21 @@ impl MatMulLayer {
         let b_batch: usize = b_shape[..b_rank - 2].iter().product();
         let b_is_batched = b_batch > 1;
 
+        if b_is_batched && a_batch != b_batch {
+            return Err(LayerError::ShapeMismatch {
+                layer: LayerKind::MatMul,
+                expected: vec![a_batch],
+                got: vec![b_batch],
+                var_name: format!(
+                    "MatMul: flattened batch dims A={a_batch} != B={b_batch} \
+                     (A batch {:?}, B batch {:?})",
+                    &a_shape[..a_rank - 2],
+                    &b_shape[..b_rank - 2]
+                ),
+            }
+            .into());
+        }
+
         let a_flat = layer_input
             .into_shape_with_order(IxDyn(&[a_batch, rows_a, k_a]))
             .map_err(|_| LayerError::InvalidShape {
@@ -695,6 +710,127 @@ mod tests {
             result.is_ok(),
             "rank-4 batched MatMul should succeed with nD support"
         );
+    }
+
+    #[test]
+    fn runtime_batched_matmul_rank4() {
+        // A: [2, 2, 2, 3] × B: [2, 2, 3, 2] → [2, 2, 2, 2]
+        // 4 independent 2×3 @ 3×2 matmuls across batch dims [2, 2].
+        let mut shapes_map = HashMap::new();
+        shapes_map.insert("a".to_string(), vec![2, 2, 2, 3]);
+        shapes_map.insert("b".to_string(), vec![2, 2, 3, 2]);
+        shapes_map.insert("y".to_string(), vec![2, 2, 2, 2]);
+
+        let built = matmul_layer(vec!["a".to_string(), "b".to_string()], &shapes_map)
+            .expect("build should succeed for rank-4");
+
+        let (mut api, _, _) = TestBuilder::new(vec![], vec![], EmptyHintCaller::new());
+
+        // A: 4 batch slices of 2×3 identity-like matrices
+        // Batch [0,0]: [[1,0,0],[0,1,0]]
+        // Batch [0,1]: [[0,0,1],[1,0,0]]
+        // Batch [1,0]: [[1,1,0],[0,1,1]]
+        // Batch [1,1]: [[1,0,1],[0,1,0]]
+        #[rustfmt::skip]
+        let a_vals: Vec<u32> = vec![
+            1,0,0, 0,1,0,
+            0,0,1, 1,0,0,
+            1,1,0, 0,1,1,
+            1,0,1, 0,1,0,
+        ];
+        // B: 4 batch slices of 3×2
+        // Batch [0,0]: [[1,2],[3,4],[5,6]]
+        // Batch [0,1]: [[1,2],[3,4],[5,6]]
+        // Batch [1,0]: [[1,0],[0,1],[1,0]]
+        // Batch [1,1]: [[2,0],[0,2],[0,0]]
+        #[rustfmt::skip]
+        let b_vals: Vec<u32> = vec![
+            1,2, 3,4, 5,6,
+            1,2, 3,4, 5,6,
+            1,0, 0,1, 1,0,
+            2,0, 0,2, 0,0,
+        ];
+
+        let mut inputs = HashMap::new();
+        inputs.insert(
+            "a".to_string(),
+            tensor_vars(&mut api, &a_vals, &[2, 2, 2, 3]),
+        );
+        inputs.insert(
+            "b".to_string(),
+            tensor_vars(&mut api, &b_vals, &[2, 2, 3, 2]),
+        );
+        let mut logup_ctx = LogupRangeCheckContext::new_default();
+
+        let (_, out) = built
+            .apply(&mut api, &mut logup_ctx, &inputs)
+            .expect("apply should succeed for rank-4");
+
+        assert_eq!(out.shape(), &[2, 2, 2, 2]);
+
+        // Reference computation:
+        // [0,0]: [[1,0,0],[0,1,0]] @ [[1,2],[3,4],[5,6]] = [[1,2],[3,4]]
+        // [0,1]: [[0,0,1],[1,0,0]] @ [[1,2],[3,4],[5,6]] = [[5,6],[1,2]]
+        // [1,0]: [[1,1,0],[0,1,1]] @ [[1,0],[0,1],[1,0]] = [[1,1],[1,1]]
+        // [1,1]: [[1,0,1],[0,1,0]] @ [[2,0],[0,2],[0,0]] = [[2,0],[0,2]]
+        #[rustfmt::skip]
+        let expected: &[u32] = &[
+            1,2, 3,4,
+            5,6, 1,2,
+            1,1, 1,1,
+            2,0, 0,2,
+        ];
+        assert_eq!(extract_values(&mut api, &out), expected_fields(expected));
+    }
+
+    #[test]
+    fn runtime_batched_matmul_rank4_broadcast_rhs() {
+        // A: [2, 2, 2, 3] × B: [3, 2] → [2, 2, 2, 2]
+        // B broadcast across all batch dims.
+        let mut shapes_map = HashMap::new();
+        shapes_map.insert("a".to_string(), vec![2, 2, 2, 3]);
+        shapes_map.insert("b".to_string(), vec![3, 2]);
+        shapes_map.insert("y".to_string(), vec![2, 2, 2, 2]);
+
+        let built = matmul_layer(vec!["a".to_string(), "b".to_string()], &shapes_map)
+            .expect("build should succeed for rank-4 × rank-2");
+
+        let (mut api, _, _) = TestBuilder::new(vec![], vec![], EmptyHintCaller::new());
+
+        // Same A as above, B = [[1,0],[0,1],[0,0]] (selects first two cols)
+        #[rustfmt::skip]
+        let a_vals: Vec<u32> = vec![
+            1,0,0, 0,1,0,
+            0,0,1, 1,0,0,
+            1,1,0, 0,1,1,
+            1,0,1, 0,1,0,
+        ];
+        #[rustfmt::skip]
+        let b_vals: Vec<u32> = vec![1,0, 0,1, 0,0];
+
+        let mut inputs = HashMap::new();
+        inputs.insert(
+            "a".to_string(),
+            tensor_vars(&mut api, &a_vals, &[2, 2, 2, 3]),
+        );
+        inputs.insert("b".to_string(), tensor_vars(&mut api, &b_vals, &[3, 2]));
+        let mut logup_ctx = LogupRangeCheckContext::new_default();
+
+        let (_, out) = built
+            .apply(&mut api, &mut logup_ctx, &inputs)
+            .expect("apply should succeed");
+
+        assert_eq!(out.shape(), &[2, 2, 2, 2]);
+
+        // Each 2×3 slice @ [[1,0],[0,1],[0,0]] selects first two columns of A
+        #[rustfmt::skip]
+        let expected: &[u32] = &[
+            1,0, 0,1,
+            0,0, 1,0,
+            1,1, 0,1,
+            1,0, 0,1,
+        ];
+        assert_eq!(extract_values(&mut api, &out), expected_fields(expected));
     }
 
     #[test]
