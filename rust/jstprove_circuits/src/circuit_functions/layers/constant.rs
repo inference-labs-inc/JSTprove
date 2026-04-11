@@ -1,27 +1,34 @@
 use std::collections::HashMap;
 
 use expander_compiler::frontend::{Config, RootAPI, Variable};
-use ndarray::{ArrayD, IxDyn};
+use ndarray::ArrayD;
 
 use crate::circuit_functions::{
     CircuitError,
+    gadgets::LogupRangeCheckContext,
     layers::{LayerError, LayerKind, layer_ops::LayerOp},
+    utils::tensor_ops::load_circuit_constant,
 };
 
 #[derive(Debug)]
 pub struct ConstantLayer {
     outputs: Vec<String>,
+    values: ArrayD<i64>,
 }
 
 impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ConstantLayer {
-    // Passthrough
     fn apply(
         &self,
         api: &mut Builder,
-        _logup_ctx: &mut crate::circuit_functions::gadgets::LogupRangeCheckContext,
+        _logup_ctx: &mut LogupRangeCheckContext,
         _input: &HashMap<String, ArrayD<Variable>>,
     ) -> Result<(Vec<String>, ArrayD<Variable>), CircuitError> {
-        let arr = ArrayD::from_shape_vec(IxDyn(&[1]), vec![api.constant(0)]).map_err(|e| {
+        let elements: Vec<Variable> = self
+            .values
+            .iter()
+            .map(|&v| load_circuit_constant::<C, Builder>(api, v))
+            .collect();
+        let arr = ArrayD::from_shape_vec(self.values.raw_dim(), elements).map_err(|e| {
             LayerError::InvalidShape {
                 layer: LayerKind::Constant,
                 msg: e.to_string(),
@@ -37,12 +44,30 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ConstantLayer {
         _optimization_pattern: crate::circuit_functions::utils::graph_pattern_matching::PatternRegistry,
         _is_rescale: bool,
         _index: usize,
-        _layer_context: &crate::circuit_functions::utils::build_layers::BuildLayerContext,
+        layer_context: &crate::circuit_functions::utils::build_layers::BuildLayerContext,
     ) -> Result<Box<dyn LayerOp<C, Builder>>, CircuitError> {
-        let constant = Self {
-            outputs: layer.outputs.clone(),
-        };
+        let out_name = layer
+            .outputs
+            .first()
+            .ok_or_else(|| LayerError::MissingParameter {
+                layer: LayerKind::Constant,
+                param: "output tensor".to_string(),
+            })?;
 
-        Ok(Box::new(constant))
+        let values = layer_context
+            .get_constant(out_name)
+            .cloned()
+            .ok_or_else(|| LayerError::Other {
+                layer: LayerKind::Constant,
+                msg: format!(
+                    "Constant node output '{out_name}' has no tensor payload in constants_map; \
+                     the ONNX slice must include the Constant node's value as an initializer"
+                ),
+            })?;
+
+        Ok(Box::new(Self {
+            outputs: layer.outputs.clone(),
+            values,
+        }))
     }
 }

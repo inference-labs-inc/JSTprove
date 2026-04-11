@@ -43,6 +43,7 @@ use crate::circuit_functions::{
     CircuitError,
     gadgets::range_check::LogupRangeCheckContext,
     hints::gridsample::GRIDSAMPLE_HINT_KEY,
+    hints::gridsample_dynamic::{GRIDSAMPLE_DYNAMIC_HINT_KEY, GRIDSAMPLE_DYNAMIC_OUTPUTS},
     layers::{LayerError, LayerKind, layer_ops::LayerOp},
     utils::{
         constants::INPUT,
@@ -61,14 +62,26 @@ struct BilinearOutputSpec {
 }
 
 enum GridSampleInterp {
-    /// Nearest-neighbour: `index_map[out_flat]` = `Some(in_flat)` (in-bounds)
-    /// or `None` (zeros-padding out-of-bounds).
-    Nearest { index_map: Vec<Option<usize>> },
-    /// Bilinear: per-element 4-corner specs.
+    Nearest {
+        index_map: Vec<Option<usize>>,
+    },
     Bilinear {
         per_output: Vec<BilinearOutputSpec>,
         n_bits: usize,
         scaling: u64,
+    },
+    Dynamic {
+        grid_name: String,
+        n: usize,
+        c: usize,
+        h_in: usize,
+        w_in: usize,
+        h_out: usize,
+        w_out: usize,
+        n_bits: usize,
+        scaling: u64,
+        align_corners: bool,
+        padding_mode_code: i64,
     },
 }
 
@@ -294,7 +307,11 @@ fn build_bilinear_per_output(
 // -------- Implementation --------
 
 impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GridSampleLayer {
-    #[allow(clippy::cast_sign_loss)]
+    #[allow(
+        clippy::cast_sign_loss,
+        clippy::too_many_lines,
+        clippy::cast_possible_truncation
+    )]
     fn apply(
         &self,
         api: &mut Builder,
@@ -314,7 +331,6 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GridSampleLayer {
 
         let out_flat = match &self.interp {
             GridSampleInterp::Nearest { index_map } => {
-                // Structural passthrough: select by precomputed index or inject zero.
                 let zero_var = api.constant(CircuitField::<C>::from_u256(U256::from(0u64)));
                 index_map
                     .iter()
@@ -376,6 +392,103 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GridSampleLayer {
 
                     logup_ctx.range_check::<C, Builder>(api, y, *n_bits)?;
                     out_vars.push(y);
+                }
+
+                out_vars
+            }
+
+            GridSampleInterp::Dynamic {
+                grid_name,
+                n,
+                c,
+                h_in,
+                w_in,
+                h_out,
+                w_out,
+                n_bits,
+                scaling,
+                align_corners,
+                padding_mode_code,
+            } => {
+                let grid_input = input
+                    .get(grid_name)
+                    .ok_or_else(|| LayerError::MissingInput {
+                        layer: LayerKind::GridSample,
+                        name: grid_name.clone(),
+                    })?;
+                let grid_flat = grid_input
+                    .as_slice()
+                    .ok_or_else(|| LayerError::InvalidShape {
+                        layer: LayerKind::GridSample,
+                        msg: "grid tensor is not contiguous".to_string(),
+                    })?;
+
+                let scale_var = api.constant(CircuitField::<C>::from_u256(U256::from(*scaling)));
+                let scale_exp = scaling.trailing_zeros() as usize;
+                let half_scale =
+                    api.constant(CircuitField::<C>::from_u256(U256::from(*scaling / 2)));
+                let h_in_var = api.constant(CircuitField::<C>::from_u256(U256::from(*h_in as u64)));
+                let w_in_var = api.constant(CircuitField::<C>::from_u256(U256::from(*w_in as u64)));
+                let ac_var = api.constant(CircuitField::<C>::from_u256(U256::from(u64::from(
+                    *align_corners,
+                ))));
+                let pm_var = api.constant(CircuitField::<C>::from_u256(U256::from(
+                    *padding_mode_code as u64,
+                )));
+
+                let channel_size = h_in * w_in;
+                let total_out = n * c * h_out * w_out;
+                let mut out_vars = Vec::with_capacity(total_out);
+
+                for bn in 0..*n {
+                    for bc in 0..*c {
+                        let channel_offset = bn * c * channel_size + bc * channel_size;
+                        let channel_data: Vec<Variable> = (0..channel_size)
+                            .map(|i| data_flat[channel_offset + i])
+                            .collect();
+
+                        for bh in 0..*h_out {
+                            for bw in 0..*w_out {
+                                let sp = bn * h_out * w_out + bh * w_out + bw;
+                                let x_norm_var = grid_flat[sp * 2];
+                                let y_norm_var = grid_flat[sp * 2 + 1];
+
+                                let mut hint_inputs = Vec::with_capacity(5 + channel_size + 2);
+                                hint_inputs.push(scale_var);
+                                hint_inputs.push(h_in_var);
+                                hint_inputs.push(w_in_var);
+                                hint_inputs.push(ac_var);
+                                hint_inputs.push(pm_var);
+                                hint_inputs.extend_from_slice(&channel_data);
+                                hint_inputs.push(x_norm_var);
+                                hint_inputs.push(y_norm_var);
+
+                                let hint_out = api.new_hint(
+                                    GRIDSAMPLE_DYNAMIC_HINT_KEY,
+                                    &hint_inputs,
+                                    GRIDSAMPLE_DYNAMIC_OUTPUTS,
+                                );
+                                let y = hint_out[0];
+                                let corner_vars = &hint_out[1..5];
+                                let weight_vars = &hint_out[5..9];
+
+                                let mut weighted_sum =
+                                    api.constant(CircuitField::<C>::from_u256(U256::from(0u64)));
+                                for i in 0..4 {
+                                    let product = api.mul(corner_vars[i], weight_vars[i]);
+                                    weighted_sum = api.add(weighted_sum, product);
+                                }
+
+                                let sum_plus_half = api.add(weighted_sum, half_scale);
+                                let y_times_scale = api.mul(y, scale_var);
+                                let remainder = api.sub(sum_plus_half, y_times_scale);
+                                logup_ctx.range_check::<C, Builder>(api, remainder, scale_exp)?;
+
+                                logup_ctx.range_check::<C, Builder>(api, y, *n_bits)?;
+                                out_vars.push(y);
+                            }
+                        }
+                    }
                 }
 
                 out_vars
@@ -470,37 +583,8 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GridSampleLayer {
         ];
         let [h_out, w_out] = [output_shape[2], output_shape[3]];
 
-        // Read the constant grid tensor (quantised at α¹ by the quantizer).
         let grid_name = &layer.inputs[1];
-        let grid_array: ArrayD<i64> = match get_w_or_b(layer_context.w_and_b_map, grid_name) {
-            Ok(arr) => arr,
-            Err(crate::circuit_functions::utils::UtilsError::MissingTensor { .. }) => layer_context
-                .get_constant(grid_name)
-                .cloned()
-                .ok_or_else(|| LayerError::Other {
-                    layer: LayerKind::GridSample,
-                    msg: format!(
-                        "grid tensor '{grid_name}' not found in weights or constants; \
-                             GridSample requires a compile-time constant (initializer) grid"
-                    ),
-                })?,
-            Err(e) => {
-                return Err(LayerError::Other {
-                    layer: LayerKind::GridSample,
-                    msg: format!("failed to read grid tensor '{grid_name}': {e}"),
-                }
-                .into());
-            }
-        };
 
-        let grid_flat = grid_array
-            .as_slice()
-            .ok_or_else(|| LayerError::InvalidShape {
-                layer: LayerKind::GridSample,
-                msg: "grid tensor is not contiguous".to_string(),
-            })?;
-
-        // Compute alpha from scale_exponent and use it to decode quantised grid.
         let scaling: u64 = 1u64
             .checked_shl(circuit_params.scale_exponent)
             .ok_or_else(|| LayerError::Other {
@@ -512,7 +596,6 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GridSampleLayer {
             })?;
         let alpha_f = scaling as f64;
 
-        // Read string attributes.
         let params = extract_params(layer).ok();
 
         let mode: String = params
@@ -544,40 +627,83 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GridSampleLayer {
             .into());
         }
 
-        let interp = if mode == "nearest" {
-            let index_map = build_nearest_index_map(
-                grid_flat,
-                alpha_f,
-                n,
-                c,
-                h_in,
-                w_in,
-                h_out,
-                w_out,
-                &padding_mode,
-                align_corners,
-            );
-            GridSampleInterp::Nearest { index_map }
+        let grid_const: Option<ArrayD<i64>> = match get_w_or_b(layer_context.w_and_b_map, grid_name)
+        {
+            Ok(arr) => Some(arr),
+            Err(crate::circuit_functions::utils::UtilsError::MissingTensor { .. }) => {
+                layer_context.get_constant(grid_name).cloned()
+            }
+            Err(e) => {
+                return Err(LayerError::Other {
+                    layer: LayerKind::GridSample,
+                    msg: format!("failed to read grid tensor '{grid_name}': {e}"),
+                }
+                .into());
+            }
+        };
+
+        let interp = if let Some(grid_array) = grid_const {
+            let grid_flat = grid_array
+                .as_slice()
+                .ok_or_else(|| LayerError::InvalidShape {
+                    layer: LayerKind::GridSample,
+                    msg: "grid tensor is not contiguous".to_string(),
+                })?;
+
+            if mode == "nearest" {
+                let index_map = build_nearest_index_map(
+                    grid_flat,
+                    alpha_f,
+                    n,
+                    c,
+                    h_in,
+                    w_in,
+                    h_out,
+                    w_out,
+                    &padding_mode,
+                    align_corners,
+                );
+                GridSampleInterp::Nearest { index_map }
+            } else {
+                let n_bits = layer_context.n_bits_for(&layer.name);
+                let per_output = build_bilinear_per_output(
+                    grid_flat,
+                    alpha_f,
+                    scaling,
+                    n,
+                    c,
+                    h_in,
+                    w_in,
+                    h_out,
+                    w_out,
+                    &padding_mode,
+                    align_corners,
+                );
+                GridSampleInterp::Bilinear {
+                    per_output,
+                    n_bits,
+                    scaling,
+                }
+            }
         } else {
-            // bilinear (default)
+            let padding_mode_code: i64 = match padding_mode.as_str() {
+                "zeros" => 0,
+                "border" => 1,
+                _ => 2,
+            };
             let n_bits = layer_context.n_bits_for(&layer.name);
-            let per_output = build_bilinear_per_output(
-                grid_flat,
-                alpha_f,
-                scaling,
+            GridSampleInterp::Dynamic {
+                grid_name: grid_name.clone(),
                 n,
                 c,
                 h_in,
                 w_in,
                 h_out,
                 w_out,
-                &padding_mode,
-                align_corners,
-            );
-            GridSampleInterp::Bilinear {
-                per_output,
                 n_bits,
                 scaling,
+                align_corners,
+                padding_mode_code,
             }
         };
 

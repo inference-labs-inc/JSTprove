@@ -13,19 +13,9 @@ use crate::circuit_functions::{
     },
 };
 
-/// ONNX TensorProto.DataType codes that are safe no-ops in the ZK circuit.
-///
-/// Every value in this pipeline is quantised to INT64 field elements before the
-/// circuit is built; field elements carry no type information, so a Cast to any
-/// numeric type is an identity in the circuit domain and requires no constraint.
-///
-/// FLOAT and DOUBLE are included because models commonly insert a Cast to
-/// promote float32 inputs to float64 precision before transcendental ops
-/// (Exp, Softmax, Sigmoid); after quantisation that cast is a no-op.
-///
-/// BOOL (9) and STRING (8) are excluded: a Cast that produces a boolean or
-/// string almost certainly means the model was not quantised correctly.
-const NOOP_CAST_TYPES: &[i64] = &[
+const ONNX_BOOL: i64 = 9;
+
+const SUPPORTED_CAST_TYPES: &[i64] = &[
     1,  // FLOAT
     2,  // UINT8
     3,  // INT8
@@ -33,6 +23,7 @@ const NOOP_CAST_TYPES: &[i64] = &[
     5,  // INT16
     6,  // INT32
     7,  // INT64
+    9,  // BOOL
     10, // FLOAT16
     11, // DOUBLE
     12, // UINT32
@@ -40,8 +31,8 @@ const NOOP_CAST_TYPES: &[i64] = &[
     16, // BFLOAT16
 ];
 
-fn is_noop_cast(to_type: i64) -> bool {
-    NOOP_CAST_TYPES.contains(&to_type)
+fn is_supported_cast(to_type: i64) -> bool {
+    SUPPORTED_CAST_TYPES.contains(&to_type)
 }
 
 #[derive(Debug)]
@@ -49,27 +40,23 @@ pub struct CastLayer {
     name: String,
     inputs: Vec<String>,
     outputs: Vec<String>,
-    to_type: i64, // validated ONNX TensorProto.DataType code
+    to_type: i64,
 }
 
 impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for CastLayer {
     fn apply(
         &self,
-        _api: &mut Builder,
+        api: &mut Builder,
         _logup_ctx: &mut LogupRangeCheckContext,
         input: &HashMap<String, ArrayD<Variable>>,
     ) -> Result<(Vec<String>, ArrayD<Variable>), CircuitError> {
-        // Guard: reject any to_type that is not a proven no-op integer target.
-        // build() already validates this, but apply() enforces it at the point
-        // where the passthrough result is actually produced so unexpected types
-        // can never silently become identity casts.
-        if !is_noop_cast(self.to_type) {
+        if !is_supported_cast(self.to_type) {
             return Err(LayerError::Other {
                 layer: LayerKind::Cast,
                 msg: format!(
                     "{}: Cast to ONNX DataType {} is not supported in the ZK circuit; \
-                    only integer targets {:?} are proven no-ops",
-                    self.name, self.to_type, NOOP_CAST_TYPES
+                    supported targets: {:?}",
+                    self.name, self.to_type, SUPPORTED_CAST_TYPES
                 ),
             }
             .into());
@@ -83,8 +70,21 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for CastLayer {
                 name: input_name.clone(),
             })?
             .clone();
-        // Cast is a no-op in the ZK circuit: the quantizer has already resolved
-        // types; field elements are typeless.
+
+        if self.to_type == ONNX_BOOL {
+            let out_flat: Vec<Variable> = layer_input.iter().map(|&val| api.is_zero(val)).collect();
+            let one = api.constant(1u32);
+            let boolified: Vec<Variable> = out_flat.iter().map(|&iz| api.sub(one, iz)).collect();
+            let out_array =
+                ArrayD::from_shape_vec(layer_input.raw_dim(), boolified).map_err(|e| {
+                    LayerError::InvalidShape {
+                        layer: LayerKind::Cast,
+                        msg: format!("Cast-to-bool output reshape failed: {e}"),
+                    }
+                })?;
+            return Ok((self.outputs.clone(), out_array));
+        }
+
         Ok((self.outputs.clone(), layer_input))
     }
 
@@ -109,14 +109,13 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for CastLayer {
                 msg: format!("failed to read 'to' attribute: {e}"),
             })?;
 
-        // Reject unsupported Cast targets at build time so they never reach apply().
-        if !is_noop_cast(to_type) {
+        if !is_supported_cast(to_type) {
             return Err(LayerError::Other {
                 layer: LayerKind::Cast,
                 msg: format!(
                     "{}: Cast to ONNX DataType {to_type} is not supported in the ZK circuit; \
-                    only integer targets {:?} are proven no-ops",
-                    layer.name, NOOP_CAST_TYPES
+                    supported targets: {:?}",
+                    layer.name, SUPPORTED_CAST_TYPES
                 ),
             }
             .into());

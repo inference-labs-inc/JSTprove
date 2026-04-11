@@ -24,7 +24,7 @@ use crate::circuit_functions::{
     layers::{LayerError, LayerKind, layer_ops::LayerOp},
     utils::{
         constants::INPUT,
-        onnx_model::{get_input_name, get_w_or_b},
+        onnx_model::{get_input_name, get_w_or_b_or_constant},
     },
 };
 
@@ -267,10 +267,8 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for SliceLayer {
             }
         };
 
-        // Helper: read a required i64 tensor, first from initializers and then
-        // from layer.params constant-node injection.
         let read_i64 = |name: &String, field: &str| -> Result<Vec<i64>, CircuitError> {
-            if let Ok(arr) = get_w_or_b(layer_context.w_and_b_map, name) {
+            if let Ok(arr) = get_w_or_b_or_constant(layer_context, name) {
                 return Ok(arr
                     .as_slice()
                     .ok_or_else(|| LayerError::Other {
@@ -307,7 +305,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for SliceLayer {
             Err(LayerError::Other {
                 layer: LayerKind::Slice,
                 msg: format!(
-                    "failed to read {field} tensor '{name}' from initializers or layer params"
+                    "failed to read {field} tensor '{name}' from initializers, constants, or layer params"
                 ),
             }
             .into())

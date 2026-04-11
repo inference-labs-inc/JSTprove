@@ -1,15 +1,3 @@
-// ONNX `Where` layer for ZK circuits.
-//
-// # ZK approach
-// Where selects elements from X or Y based on a condition tensor.
-// The condition MUST be a compile-time constant (from initializers/Constant nodes).
-// This is a purely structural operation: for each position, we choose between
-// x_var and y_var at build time based on the precomputed boolean mask.
-//
-// # Constraint
-// The output is selected directly from X or Y — no new circuit constraints.
-// Conditional selection on runtime values would require circuit multiplexing.
-
 use std::collections::HashMap;
 
 use ndarray::{ArrayD, IxDyn};
@@ -20,25 +8,8 @@ use crate::circuit_functions::{
     CircuitError,
     gadgets::LogupRangeCheckContext,
     layers::{LayerError, LayerKind, layer_ops::LayerOp},
-    utils::onnx_model::get_w_or_b,
+    utils::onnx_model::{get_optional_w_or_b, get_w_or_b_or_constant},
 };
-
-// -------- Struct --------
-
-pub struct WhereLayer {
-    #[allow(dead_code)]
-    inputs: Vec<String>,
-    outputs: Vec<String>,
-    output_shape: Vec<usize>,
-    /// Boolean mask: true → take from X, false → take from Y.
-    /// Indices are for the broadcast output.
-    mask: Vec<bool>,
-    /// Index maps from output flat index to X/Y flat indices (broadcast).
-    x_indices: Vec<usize>,
-    y_indices: Vec<usize>,
-    x_name: String,
-    y_name: String,
-}
 
 fn unravel(mut flat: usize, shape: &[usize]) -> Vec<usize> {
     let mut coords = vec![0usize; shape.len()];
@@ -61,7 +32,6 @@ fn ravel(coords: &[usize], shape: &[usize]) -> usize {
     flat
 }
 
-/// Broadcast out_coords to a smaller shape by wrapping dims of size 1.
 fn broadcast_index(out_coords: &[usize], shape: &[usize], out_rank: usize) -> usize {
     let rank = shape.len();
     let pad = out_rank - rank;
@@ -73,12 +43,36 @@ fn broadcast_index(out_coords: &[usize], shape: &[usize], out_rank: usize) -> us
     ravel(&coords, shape)
 }
 
-// -------- Implementation --------
+enum WhereMode {
+    Precomputed {
+        mask: Vec<bool>,
+        x_indices: Vec<usize>,
+        y_indices: Vec<usize>,
+    },
+    Runtime {
+        cond_initializer: Option<ArrayD<i64>>,
+        cond_shape: Vec<usize>,
+        x_shape: Vec<usize>,
+        y_shape: Vec<usize>,
+    },
+}
+
+pub struct WhereLayer {
+    #[allow(dead_code)]
+    inputs: Vec<String>,
+    outputs: Vec<String>,
+    output_shape: Vec<usize>,
+    cond_name: String,
+    x_name: String,
+    y_name: String,
+    mode: WhereMode,
+}
 
 impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for WhereLayer {
+    #[allow(clippy::too_many_lines)]
     fn apply(
         &self,
-        _api: &mut Builder,
+        api: &mut Builder,
         _logup_ctx: &mut LogupRangeCheckContext,
         input: &HashMap<String, ArrayD<Variable>>,
     ) -> Result<(Vec<String>, ArrayD<Variable>), CircuitError> {
@@ -104,18 +98,78 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for WhereLayer {
             msg: "Y tensor is not contiguous".to_string(),
         })?;
 
-        let out_flat: Vec<Variable> = self
-            .mask
-            .iter()
-            .enumerate()
-            .map(|(i, &cond)| {
-                if cond {
-                    x_flat[self.x_indices[i]]
+        let out_flat = match &self.mode {
+            WhereMode::Precomputed {
+                mask,
+                x_indices,
+                y_indices,
+            } => mask
+                .iter()
+                .enumerate()
+                .map(|(i, &cond)| {
+                    if cond {
+                        x_flat[x_indices[i]]
+                    } else {
+                        y_flat[y_indices[i]]
+                    }
+                })
+                .collect::<Vec<Variable>>(),
+            WhereMode::Runtime {
+                cond_initializer,
+                cond_shape,
+                x_shape,
+                y_shape,
+            } => {
+                let total_out: usize = self.output_shape.iter().product();
+                let out_rank = self.output_shape.len();
+
+                let cond_flat: Vec<Variable> = if let Some(init) = cond_initializer {
+                    let zero = api.constant(0u32);
+                    let one = api.constant(1u32);
+                    init.iter()
+                        .map(|&v| if v != 0 { one } else { zero })
+                        .collect()
                 } else {
-                    y_flat[self.y_indices[i]]
+                    let cond_input =
+                        input
+                            .get(&self.cond_name)
+                            .ok_or_else(|| LayerError::MissingInput {
+                                layer: LayerKind::Where,
+                                name: self.cond_name.clone(),
+                            })?;
+                    let raw = cond_input
+                        .as_slice()
+                        .ok_or_else(|| LayerError::InvalidShape {
+                            layer: LayerKind::Where,
+                            msg: "condition tensor is not contiguous".to_string(),
+                        })?;
+                    let one = api.constant(1u32);
+                    raw.iter()
+                        .map(|&v| {
+                            let iz = api.is_zero(v);
+                            api.sub(one, iz)
+                        })
+                        .collect()
+                };
+
+                let mut out_vars = Vec::with_capacity(total_out);
+                for out_flat_idx in 0..total_out {
+                    let out_coords = unravel(out_flat_idx, &self.output_shape);
+                    let ci = broadcast_index(&out_coords, cond_shape, out_rank);
+                    let xi = broadcast_index(&out_coords, x_shape, out_rank);
+                    let yi = broadcast_index(&out_coords, y_shape, out_rank);
+
+                    let c = cond_flat[ci];
+                    let x_val = x_flat[xi];
+                    let y_val = y_flat[yi];
+                    let diff = api.sub(x_val, y_val);
+                    let selected = api.mul(c, diff);
+                    let result = api.add(selected, y_val);
+                    out_vars.push(result);
                 }
-            })
-            .collect();
+                out_vars
+            }
+        };
 
         let out_array =
             ArrayD::from_shape_vec(IxDyn(&self.output_shape), out_flat).map_err(|e| {
@@ -206,52 +260,62 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for WhereLayer {
             })?
             .clone();
 
-        // Condition must be a compile-time constant.
-        let cond_data: ArrayD<i64> =
-            get_w_or_b(layer_context.w_and_b_map, &cond_name).map_err(|e| LayerError::Other {
-                layer: LayerKind::Where,
-                msg: format!(
-                    "Where condition '{}' must be a compile-time constant; \
-                         failed to load from initializers: {}",
-                    cond_name, e
-                ),
-            })?;
+        let cond_const = get_w_or_b_or_constant(layer_context, &cond_name).ok();
 
-        let cond_flat = cond_data
-            .as_slice()
-            .ok_or_else(|| LayerError::InvalidShape {
-                layer: LayerKind::Where,
-                msg: "condition tensor is not contiguous".to_string(),
-            })?;
+        let mode = if let Some(cond_data) = cond_const {
+            let cond_flat = cond_data
+                .as_slice()
+                .ok_or_else(|| LayerError::InvalidShape {
+                    layer: LayerKind::Where,
+                    msg: "condition tensor is not contiguous".to_string(),
+                })?;
 
-        let total_out: usize = output_shape.iter().product();
-        let out_rank = output_shape.len();
+            let total_out: usize = output_shape.iter().product();
+            let out_rank = output_shape.len();
 
-        let mut mask = Vec::with_capacity(total_out);
-        let mut x_indices = Vec::with_capacity(total_out);
-        let mut y_indices = Vec::with_capacity(total_out);
+            let mut mask = Vec::with_capacity(total_out);
+            let mut x_indices = Vec::with_capacity(total_out);
+            let mut y_indices = Vec::with_capacity(total_out);
 
-        for out_flat_idx in 0..total_out {
-            let out_coords = unravel(out_flat_idx, &output_shape);
+            for out_flat_idx in 0..total_out {
+                let out_coords = unravel(out_flat_idx, &output_shape);
+                let cond_idx = broadcast_index(&out_coords, &cond_shape, out_rank);
+                let xi = broadcast_index(&out_coords, &x_shape, out_rank);
+                let yi = broadcast_index(&out_coords, &y_shape, out_rank);
 
-            let cond_idx = broadcast_index(&out_coords, &cond_shape, out_rank);
-            let xi = broadcast_index(&out_coords, &x_shape, out_rank);
-            let yi = broadcast_index(&out_coords, &y_shape, out_rank);
+                mask.push(cond_flat[cond_idx] != 0);
+                x_indices.push(xi);
+                y_indices.push(yi);
+            }
 
-            mask.push(cond_flat[cond_idx] != 0);
-            x_indices.push(xi);
-            y_indices.push(yi);
-        }
+            WhereMode::Precomputed {
+                mask,
+                x_indices,
+                y_indices,
+            }
+        } else {
+            let cond_opt =
+                get_optional_w_or_b(layer_context, &cond_name).map_err(|e| LayerError::Other {
+                    layer: LayerKind::Where,
+                    msg: format!("Where condition '{}': {}", cond_name, e),
+                })?;
+
+            WhereMode::Runtime {
+                cond_initializer: cond_opt,
+                cond_shape: cond_shape.clone(),
+                x_shape: x_shape.clone(),
+                y_shape: y_shape.clone(),
+            }
+        };
 
         Ok(Box::new(Self {
             inputs: layer.inputs.clone(),
             outputs: layer.outputs.clone(),
             output_shape,
-            mask,
-            x_indices,
-            y_indices,
+            cond_name,
             x_name,
             y_name,
+            mode,
         }))
     }
 }
@@ -271,7 +335,6 @@ mod tests {
 
     #[test]
     fn broadcast_index_no_broadcast() {
-        // Shape matches output exactly: coords map 1-to-1.
         let out_coords = [1usize, 2, 3];
         let shape = [4usize, 5, 6];
         let idx = broadcast_index(&out_coords, &shape, 3);
@@ -280,7 +343,6 @@ mod tests {
 
     #[test]
     fn broadcast_index_scalar_broadcast() {
-        // Shape [1]: any output coordinate maps to flat index 0.
         let shape = [1usize];
         for oc in 0..5 {
             let out_coords = [oc];
@@ -290,26 +352,18 @@ mod tests {
 
     #[test]
     fn broadcast_index_leading_dims_padded() {
-        // Operand shape [3] broadcast against output rank 2 (output shape [4, 3]).
-        // out_coords[1] is the relevant dim; pad = 1.
         let shape = [3usize];
         let out_rank = 2;
-        // out[0, 0] → shape index 0
         assert_eq!(broadcast_index(&[0, 0], &shape, out_rank), 0);
-        // out[2, 1] → shape index 1
         assert_eq!(broadcast_index(&[2, 1], &shape, out_rank), 1);
-        // out[3, 2] → shape index 2
         assert_eq!(broadcast_index(&[3, 2], &shape, out_rank), 2);
     }
 
     #[test]
     fn broadcast_index_size_one_dim_collapses() {
-        // Shape [1, 3]: dim 0 is broadcast (size 1), dim 1 is real.
         let shape = [1usize, 3];
         let out_rank = 2;
-        // out[0, 0] → in[0, 0] = flat 0
         assert_eq!(broadcast_index(&[0, 0], &shape, out_rank), 0);
-        // out[5, 2] → in[0, 2] = flat 2 (dim 0 broadcasts)
         assert_eq!(broadcast_index(&[5, 2], &shape, out_rank), 2);
     }
 }
