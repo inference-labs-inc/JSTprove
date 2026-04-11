@@ -39,6 +39,9 @@ pub enum SetupError {
     /// The circuit's random coefficients have not been identified
     /// via `pre_process_gkr` / `identify_rnd_coefs` before setup.
     RndCoefsNotIdentified,
+    /// Circuit dimensions exceed the wire-format limits enforced by
+    /// `HolographicVerifyingKey::deserialize_from`.
+    DimensionExceeded(String),
 }
 
 impl std::fmt::Display for SetupError {
@@ -51,6 +54,7 @@ impl std::fmt::Display for SetupError {
             Self::RndCoefsNotIdentified => {
                 write!(f, "circuit.rnd_coefs not identified before setup")
             }
+            Self::DimensionExceeded(msg) => write!(f, "dimension exceeded: {msg}"),
         }
     }
 }
@@ -102,10 +106,14 @@ impl ExpSerde for LayerWiringCommitment {
             1 => poly_commit::whir::SparseArity::Three,
             _ => return Err(SerdeError::DeserializeError),
         };
-        let mu = u64::deserialize_from(&mut reader)? as usize;
-        let k_pad = u64::deserialize_from(&mut reader)? as usize;
-        let log_k_pad = u64::deserialize_from(&mut reader)? as usize;
-        let total_vars = u64::deserialize_from(&mut reader)? as usize;
+        let mu = usize::try_from(u64::deserialize_from(&mut reader)?)
+            .map_err(|_| SerdeError::DeserializeError)?;
+        let k_pad = usize::try_from(u64::deserialize_from(&mut reader)?)
+            .map_err(|_| SerdeError::DeserializeError)?;
+        let log_k_pad = usize::try_from(u64::deserialize_from(&mut reader)?)
+            .map_err(|_| SerdeError::DeserializeError)?;
+        let total_vars = usize::try_from(u64::deserialize_from(&mut reader)?)
+            .map_err(|_| SerdeError::DeserializeError)?;
         let n_z_u32 = u32::try_from(commitment.n_z).map_err(|_| SerdeError::DeserializeError)?;
         let n_x_u32 = u32::try_from(commitment.n_x).map_err(|_| SerdeError::DeserializeError)?;
         let m_z = 1usize
@@ -456,6 +464,21 @@ where
 {
     let wiring = extract_circuit_wiring::<C>(&circuit)?;
     let n_layers = wiring.layers.len();
+    const MAX_LAYERS: usize = 1 << 16;
+    const MAX_LOG_VAR: usize = 32;
+    if n_layers > MAX_LAYERS {
+        return Err(SetupError::DimensionExceeded(format!(
+            "n_layers {n_layers} > {MAX_LAYERS}"
+        )));
+    }
+    for lw in &wiring.layers {
+        if lw.n_z > MAX_LOG_VAR || lw.n_x > MAX_LOG_VAR {
+            return Err(SetupError::DimensionExceeded(format!(
+                "layer {} n_z={} n_x={} exceeds {MAX_LOG_VAR}",
+                lw.layer_index, lw.n_z, lw.n_x
+            )));
+        }
+    }
 
     let mut vk_layers = Vec::with_capacity(n_layers);
     let mut pk_layers = Vec::with_capacity(n_layers);
@@ -540,6 +563,12 @@ where
     }
 
     let log_input_size = circuit.log_input_size();
+    const MAX_LOG_INPUT_SIZE: usize = 32;
+    if log_input_size > MAX_LOG_INPUT_SIZE {
+        return Err(SetupError::DimensionExceeded(format!(
+            "log_input_size {log_input_size} > {MAX_LOG_INPUT_SIZE}"
+        )));
+    }
     let n_rnd_coefs = if circuit.rnd_coefs_identified {
         circuit.rnd_coefs.len()
     } else {
