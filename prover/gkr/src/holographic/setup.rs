@@ -595,12 +595,18 @@ where
     // (arity, nnz, m_z, m_x, m_y) so the VK does not strictly
     // need to carry it; we expose it on LayerWiringCommitment for
     // convenience.
-    let m_z = 1usize << poly.n_z;
-    let m_x = 1usize << poly.n_x;
+    let m_z = 1usize
+        .checked_shl(poly.n_z as u32)
+        .ok_or(SetupError::SparseCommit { layer: layer_index })?;
+    let m_x = 1usize
+        .checked_shl(poly.n_x as u32)
+        .ok_or(SetupError::SparseCommit { layer: layer_index })?;
     let m_y = if poly.arity == poly_commit::whir::SparseArity::Two {
         1
     } else {
-        1usize << poly.n_y
+        1usize
+            .checked_shl(poly.n_y as u32)
+            .ok_or(SetupError::SparseCommit { layer: layer_index })?
     };
     let layout = SparseLayout::compute(poly.arity, poly.nnz(), m_z, m_x, m_y);
 
