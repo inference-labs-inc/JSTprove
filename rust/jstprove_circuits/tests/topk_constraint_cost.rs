@@ -55,48 +55,37 @@ impl TopKBench {
 
                     let hint_out = api.new_hint(TOPK_HINT_KEY, &hint_inputs, 2 * k);
                     let values = &hint_out[..k];
-                    let indices = &hint_out[k..];
 
                     let mut logup_ctx = LogupRangeCheckContext::new_default();
 
-                    let mut mux_sums: Vec<Variable> = (0..k).map(|_| api.constant(0u32)).collect();
-                    let mut matched_counts: Vec<Variable> =
-                        (0..k).map(|_| api.constant(0u32)).collect();
+                    let mut membership_prods: Vec<Variable> =
+                        (0..k).map(|_| api.constant(1u32)).collect();
                     let min_val = values[k - 1];
 
-                    for (a, &elem) in lane.iter().enumerate() {
-                        let a_var = api.constant(a as u32);
-                        let mut is_sel = api.constant(0u32);
+                    for &elem in lane.iter() {
+                        let mut qi = api.constant(1u32);
                         for j in 0..k {
-                            let diff = api.sub(indices[j], a_var);
-                            let eq = api.is_zero(diff);
-                            let selected = api.mul(eq, elem);
-                            mux_sums[j] = api.add(mux_sums[j], selected);
-                            matched_counts[j] = api.add(matched_counts[j], eq);
-                            is_sel = api.add(is_sel, eq);
+                            let factor = api.sub(values[j], elem);
+                            membership_prods[j] = api.mul(membership_prods[j], factor);
+                            qi = api.mul(qi, factor);
                         }
 
-                        let delta = api.sub(min_val, elem);
-                        let delta_shifted = api.add(delta, offset);
+                        let is_sel = api.is_zero(qi);
                         let one_c = api.constant(1u32);
                         let not_sel = api.sub(one_c, is_sel);
-                        let check_val = api.mul(not_sel, delta_shifted);
-                        let filler = api.mul(is_sel, offset);
-                        let final_check = api.add(check_val, filler);
+
+                        let delta = api.sub(min_val, elem);
+                        let check_val = api.mul(not_sel, delta);
 
                         let _ = logup_ctx.range_check::<BN254Config, Builder>(
                             api,
-                            final_check,
+                            check_val,
                             shift_n_bits,
                         );
                     }
 
-                    let one = api.constant(1u32);
                     for j in 0..k {
-                        api.assert_is_equal(matched_counts[j], one);
-                        api.assert_is_equal(values[j], mux_sums[j]);
-                        let _ =
-                            logup_ctx.range_check::<BN254Config, Builder>(api, values[j], n_bits);
+                        api.assert_is_zero(membership_prods[j]);
                     }
 
                     for j in 0..k.saturating_sub(1) {
@@ -107,15 +96,6 @@ impl TopKBench {
                             shifted,
                             shift_n_bits,
                         );
-                    }
-
-                    for i in 0..k {
-                        for j in (i + 1)..k {
-                            let diff = api.sub(indices[i], indices[j]);
-                            let is_eq = api.is_zero(diff);
-                            let zero = api.constant(0u32);
-                            api.assert_is_equal(is_eq, zero);
-                        }
                     }
                 });
             }
