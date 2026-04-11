@@ -9,6 +9,7 @@ use expander_compiler::serdes::ExpSerde;
 use gkr::holographic::combined_proof::{CombinedHolographicProof, PerLayerWiringClaims};
 use gkr::holographic::setup::HolographicVerifyingKey;
 use gkr::verifier::holographic_gkr::{HolographicLayerInput, holographic_gkr_verify};
+use gkr_engine::PolynomialCommitmentType;
 use poly_commit::expander_pcs_init_testing_only;
 
 use crate::runner::errors::RunError;
@@ -141,6 +142,13 @@ where
 
 /// # Errors
 /// Returns `RunError` on verification or deserialization failure.
+///
+/// # Panics
+///
+/// Panics if `C::PCSConfig::PCS_TYPE` is not a transparent PCS backend
+/// (`Whir` or `Raw`). Non-transparent backends produce RNG-dependent
+/// SRS artifacts that cannot be deterministically regenerated on the
+/// verify path.
 #[allow(clippy::similar_names, clippy::too_many_lines)]
 pub fn verify_holographic_with_vk<C>(vk_bytes: &[u8], proof_bytes: &[u8]) -> Result<bool, RunError>
 where
@@ -248,6 +256,13 @@ where
         Err(e) => return Err(RunError::Verify(format!("holographic verify: {e}"))),
     };
 
+    assert!(
+        matches!(
+            <C as GKREngine>::PCSConfig::PCS_TYPE,
+            PolynomialCommitmentType::Whir | PolynomialCommitmentType::Raw
+        ),
+        "holographic verify requires a transparent PCS (no trusted setup)"
+    );
     let (pcs_params, _, pcs_verification_key, _) = expander_pcs_init_testing_only::<
         <C as GKREngine>::FieldConfig,
         <C as GKREngine>::PCSConfig,

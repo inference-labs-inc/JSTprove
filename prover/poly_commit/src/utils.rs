@@ -4,6 +4,7 @@ use gkr_engine::{
     ExpanderPCS, ExpanderSingleVarChallenge, FieldEngine, MPIEngine, StructuredReferenceString,
 };
 use polynomials::{MultiLinearPoly, MultilinearExtension, MutableMultilinearExtension};
+use rand::rngs::OsRng;
 
 #[allow(clippy::type_complexity)]
 pub fn expander_pcs_init_testing_only<FieldConfig: FieldEngine, PCS: ExpanderPCS<FieldConfig>>(
@@ -25,6 +26,33 @@ pub fn expander_pcs_init_testing_only<FieldConfig: FieldEngine, PCS: ExpanderPCS
         &mut rng,
         None,
     );
+
+    let (pcs_proving_key, pcs_verification_key) = pcs_setup.into_keys();
+    let pcs_scratch = <PCS as ExpanderPCS<FieldConfig>>::init_scratch_pad(&pcs_params, mpi_config);
+
+    (
+        pcs_params,
+        pcs_proving_key,
+        pcs_verification_key,
+        pcs_scratch,
+    )
+}
+
+#[allow(clippy::type_complexity)]
+pub fn expander_pcs_init<FieldConfig: FieldEngine, PCS: ExpanderPCS<FieldConfig>>(
+    n_input_vars: usize,
+    mpi_config: &impl MPIEngine,
+) -> (
+    PCS::Params,
+    <PCS::SRS as StructuredReferenceString>::PKey,
+    <PCS::SRS as StructuredReferenceString>::VKey,
+    PCS::ScratchPad,
+) {
+    let mut rng = OsRng;
+
+    let pcs_params =
+        <PCS as ExpanderPCS<FieldConfig>>::gen_params(n_input_vars, mpi_config.world_size());
+    let pcs_setup = <PCS as ExpanderPCS<FieldConfig>>::gen_srs(&pcs_params, mpi_config, &mut rng);
 
     let (pcs_proving_key, pcs_verification_key) = pcs_setup.into_keys();
     let pcs_scratch = <PCS as ExpanderPCS<FieldConfig>>::init_scratch_pad(&pcs_params, mpi_config);

@@ -72,12 +72,7 @@ impl Path {
         }
 
         end_timer!(timer);
-        if current_node != *root {
-            println!("path does not match the root");
-            false
-        } else {
-            true
-        }
+        current_node == *root
     }
 
     #[inline]
