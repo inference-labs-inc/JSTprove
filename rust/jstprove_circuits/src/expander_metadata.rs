@@ -306,6 +306,7 @@ fn build_circuit_params(
         proof_system: ProofSystem::Expander,
         proof_config: proof_config.map(StampedProofConfig::current),
         logup_chunk_bits: None,
+        public_inputs: Vec::new(),
     }
 }
 

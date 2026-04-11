@@ -608,6 +608,7 @@ fn stamp_proof_config(
         proof_system: crate::proof_system::ProofSystem::Expander,
         proof_config: None,
         logup_chunk_bits: None,
+        public_inputs: Vec::new(),
     });
     params.proof_config = Some(crate::proof_config::StampedProofConfig::current(config));
     params

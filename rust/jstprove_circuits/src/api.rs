@@ -88,6 +88,103 @@ fn unsupported_witness(config: ProofConfig) -> Result<WitnessBundle, RunError> {
     )))
 }
 
+fn unsupported_holographic(config: ProofConfig) -> Result<Vec<u8>, RunError> {
+    Err(RunError::Unsupported(format!(
+        "{config} does not support holographic GKR setup; only \
+         goldilocks_ext4_whir is currently wired (goldilocks_ext3_whir \
+         is blocked on the WHIR commit Ext3 leaf-packing fix tracked \
+         separately)"
+    )))
+}
+
+/// Run holographic GKR setup over a compiled circuit and return
+/// the serialized verifying key as `vk_bytes`. The output is the
+/// lightweight artifact that ships in `vk.bin` and lets validators
+/// verify proofs without ever seeing the circuit.
+///
+/// Currently only `ProofConfig::GoldilocksExt4Whir` is wired. The
+/// `GoldilocksExt3Whir` path is blocked on the WHIR commit Ext3
+/// leaf-packing alignment fix (the underlying `whir_commit` rejects
+/// fields where `LEAF_BYTES (64) % F::SIZE != 0`; Ext3 has
+/// `SIZE = 24`). All other configs return
+/// `RunError::Unsupported`.
+///
+/// # Errors
+/// Returns `RunError::Unsupported` for non-WHIR configs and
+/// `RunError::Compile` if wiring extraction or sparse commit
+/// rejects any layer of the source circuit.
+pub fn setup_holographic_vk(
+    config: ProofConfig,
+    circuit_bytes: &[u8],
+) -> Result<Vec<u8>, RunError> {
+    use crate::runner::holographic::holographic_setup_from_bytes;
+    use expander_compiler::frontend::GoldilocksWhirPQConfig;
+
+    dispatch_by_proof_config(
+        config,
+        || unsupported_holographic(config),
+        || unsupported_holographic(config),
+        || unsupported_holographic(config),
+        || unsupported_holographic(config),
+        || unsupported_holographic(config),
+        || holographic_setup_from_bytes::<GoldilocksWhirPQConfig>(circuit_bytes),
+    )
+}
+
+/// # Errors
+/// Returns `RunError` on proof generation or serialization failure.
+pub fn prove_holographic(
+    config: ProofConfig,
+    circuit_bytes: &[u8],
+    witness_bytes: &[u8],
+) -> Result<Vec<u8>, RunError> {
+    use crate::runner::holographic::prove_holographic_from_bytes;
+    use expander_compiler::frontend::GoldilocksWhirPQConfig;
+
+    fn unsupported(config: ProofConfig) -> Result<Vec<u8>, RunError> {
+        Err(RunError::Unsupported(format!(
+            "{config} does not support holographic GKR prove"
+        )))
+    }
+
+    dispatch_by_proof_config(
+        config,
+        || unsupported(config),
+        || unsupported(config),
+        || unsupported(config),
+        || unsupported(config),
+        || unsupported(config),
+        || prove_holographic_from_bytes::<GoldilocksWhirPQConfig>(circuit_bytes, witness_bytes),
+    )
+}
+
+/// # Errors
+/// Returns `RunError` on verification or deserialization failure.
+pub fn verify_holographic(
+    config: ProofConfig,
+    vk_bytes: &[u8],
+    proof_bytes: &[u8],
+) -> Result<bool, RunError> {
+    use crate::runner::holographic::verify_holographic_with_vk;
+    use expander_compiler::frontend::GoldilocksWhirPQConfig;
+
+    fn unsupported(config: ProofConfig) -> Result<bool, RunError> {
+        Err(RunError::Unsupported(format!(
+            "{config} does not support holographic GKR verify"
+        )))
+    }
+
+    dispatch_by_proof_config(
+        config,
+        || unsupported(config),
+        || unsupported(config),
+        || unsupported(config),
+        || unsupported(config),
+        || unsupported(config),
+        || verify_holographic_with_vk::<GoldilocksWhirPQConfig>(vk_bytes, proof_bytes),
+    )
+}
+
 /// # Errors
 /// Returns `RunError` on witness generation failure.
 pub fn witness(
@@ -454,6 +551,42 @@ mod tests {
     fn supported_ops_nonempty() {
         let ops = supported_ops(ProofSystem::Expander);
         assert!(!ops.is_empty());
+    }
+
+    #[test]
+    fn setup_holographic_vk_unsupported_for_non_whir_configs() {
+        // Every non-WHIR config must produce
+        // RunError::Unsupported. The Ext4 path requires real
+        // circuit_bytes and is exercised in Phase 4's end-to-end
+        // test fixture; here we only check the dispatch routing.
+        for config in [
+            ProofConfig::Bn254Raw,
+            ProofConfig::GoldilocksRaw,
+            ProofConfig::GoldilocksBasefold,
+            ProofConfig::GoldilocksExt2Basefold,
+            ProofConfig::GoldilocksExt3Whir,
+        ] {
+            let err = setup_holographic_vk(config, &[]).unwrap_err();
+            assert!(
+                matches!(err, RunError::Unsupported(_)),
+                "{config}: expected Unsupported, got {err:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn setup_holographic_vk_ext4_attempts_to_parse() {
+        // Ext4 should NOT return Unsupported. With empty
+        // circuit_bytes it will fail at the deserialize step,
+        // which produces RunError::Deserialize — that's fine for
+        // this test, we just need to confirm the dispatch reaches
+        // the holographic_setup_from_bytes call instead of
+        // bouncing off unsupported_holographic.
+        let err = setup_holographic_vk(ProofConfig::GoldilocksExt4Whir, &[]).unwrap_err();
+        assert!(
+            !matches!(err, RunError::Unsupported(_)),
+            "ext4 dispatch must reach the runner, not return Unsupported; got {err:?}"
+        );
     }
 
     #[test]

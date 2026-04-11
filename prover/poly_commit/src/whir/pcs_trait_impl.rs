@@ -571,19 +571,60 @@ where
     true
 }
 
-fn whir_commit<F: FFTField + SimdField<Scalar = F>>(evals: &[F]) -> (WhirCommitment, Tree, Vec<F>) {
+pub(crate) fn whir_commit<F: FFTField + SimdField<Scalar = F>>(
+    evals: &[F],
+) -> (WhirCommitment, Tree, Vec<F>) {
     assert!(!evals.is_empty(), "whir_commit: evals must not be empty");
-    assert!(
-        LEAF_BYTES % F::SIZE == 0,
-        "whir_commit: LEAF_BYTES ({LEAF_BYTES}) must be divisible by F::SIZE ({})",
-        F::SIZE,
-    );
     let num_vars = evals.len().ilog2() as usize;
     assert_eq!(evals.len(), 1 << num_vars);
     let codeword = rs_encode_with_rate(evals, WHIR_RATE_LOG);
-    let tree = Tree::compact_new_with_field_elems::<F, F>(codeword.clone());
+    // Mirror the open-side `build_tree_from_ext_codeword` branching:
+    // when the field element size divides the leaf width we use the
+    // compact packed encoding; when it doesn't we fall back to a
+    // padded leaf where each element occupies its next-power-of-two
+    // byte slot. This is exactly what the open / verify halves
+    // already expect for non-divisible sizes (e.g. GoldilocksExt3
+    // with `SIZE = 24` against `LEAF_BYTES = 64`), so the commit
+    // path is now consistent with them and the previously-rejected
+    // Ext3 path goes through.
+    let tree = if F::SIZE > 0 && LEAF_BYTES % F::SIZE == 0 {
+        Tree::compact_new_with_field_elems::<F, F>(codeword.clone())
+    } else {
+        build_padded_tree_from_codeword::<F>(&codeword)
+    };
     let root = tree.root();
     (WhirCommitment { root, num_vars }, tree, codeword)
+}
+
+/// Pack a codeword whose element size does not divide [`LEAF_BYTES`]
+/// into a tree of zero-padded leaves. Each element occupies a
+/// `next_power_of_two(F::SIZE)`-byte slot inside the leaf so the
+/// open-side query path can index into it deterministically via
+/// `_extract_ext_from_padded_leaf`.
+fn build_padded_tree_from_codeword<F: Field>(codeword: &[F]) -> Tree {
+    let elems_per_leaf = elems_per_leaf::<F>();
+    assert!(
+        elems_per_leaf > 0,
+        "build_padded_tree_from_codeword: elems_per_leaf must be positive"
+    );
+    let padded_elem_size = F::SIZE.next_power_of_two();
+    let num_leaves = codeword.len().div_ceil(elems_per_leaf);
+    assert!(
+        num_leaves.is_power_of_two(),
+        "build_padded_tree_from_codeword: leaf count {num_leaves} must be a power of two"
+    );
+    let mut leaves = Vec::with_capacity(num_leaves);
+    for chunk in codeword.chunks(elems_per_leaf) {
+        let mut data = [0u8; LEAF_BYTES];
+        for (i, elem) in chunk.iter().enumerate() {
+            let start = i * padded_elem_size;
+            let mut buf = vec![0u8; F::SIZE];
+            elem.serialize_into(&mut buf[..]).unwrap();
+            data[start..start + F::SIZE].copy_from_slice(&buf);
+        }
+        leaves.push(tree::Leaf::new(data));
+    }
+    Tree::new_with_leaves(leaves)
 }
 
 #[cfg(test)]

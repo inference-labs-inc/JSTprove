@@ -45,6 +45,24 @@ pub struct CircuitParams {
     pub proof_config: Option<StampedProofConfig>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub logup_chunk_bits: Option<usize>,
+    /// Names of ONNX inputs that the model author has explicitly
+    /// declared as **public** inputs of the holographic-GKR proof.
+    /// Public inputs travel in the clear alongside the proof and
+    /// are bound by the verifier directly. Inputs not listed here
+    /// fall into one of two categories:
+    ///
+    /// * **WAI weights** (any name listed in [`WANDB`]) — committed
+    ///   in the verifying key as part of the wiring polynomial,
+    ///   never re-shipped per inference.
+    /// * **Private activations** — committed in the per-inference
+    ///   proof via the per-eval extension-field commitment, with
+    ///   the validator cross-referencing the cleartext or hash they
+    ///   expected.
+    ///
+    /// Empty by default for backwards compatibility with existing
+    /// circuit bundles.
+    #[serde(default)]
+    pub public_inputs: Vec<String>,
 }
 
 impl CircuitParams {
@@ -87,6 +105,79 @@ impl CircuitParams {
     pub fn disable_autotune(&mut self) {
         self.logup_chunk_bits = Some(crate::circuit_functions::gadgets::DEFAULT_LOGUP_CHUNK_BITS);
     }
+
+    /// Partition the layer-0 input names into the three holographic-
+    /// GKR semantic regions:
+    ///
+    /// * `weights`  — names listed in `wandb.w_and_b` (WAI weights
+    ///   that go into the verifying key's wiring commitment)
+    /// * `public`   — names listed in `self.public_inputs`
+    ///   (cleartext per-inference public input)
+    /// * `private`  — every other declared input (per-inference
+    ///   private input committed in the proof's eval-time
+    ///   commitment)
+    ///
+    /// Returns `(weights, public, private)` as three `Vec<String>`
+    /// in the same name order they appear in `self.inputs` so the
+    /// caller can preserve the layer-0 slot ordering.
+    ///
+    /// An input listed in both `wandb.w_and_b` and
+    /// `self.public_inputs` is reported as a weight; weights take
+    /// precedence because they are baked into the VK and shipping
+    /// them as public inputs would defeat the purpose. The caller
+    /// can detect this conflict by intersecting `wandb.w_and_b`
+    /// names with `self.public_inputs` *before* calling this method,
+    /// since the returned partitions are mutually exclusive
+    /// (precedence removes overlaps from the result).
+    /// # Errors
+    /// Returns an error if any name in `self.public_inputs` does not
+    /// appear in `self.inputs`, or if `self.public_inputs` contains
+    /// duplicate entries.
+    pub fn partition_input_names(&self, wandb: &WANDB) -> Result<InputNamePartition, String> {
+        let input_name_set: std::collections::HashSet<&str> =
+            self.inputs.iter().map(|io| io.name.as_str()).collect();
+        let mut seen_public = std::collections::HashSet::new();
+        for name in &self.public_inputs {
+            if !input_name_set.contains(name.as_str()) {
+                return Err(format!(
+                    "public_inputs contains unknown input name: {name:?}"
+                ));
+            }
+            if !seen_public.insert(name.as_str()) {
+                return Err(format!("public_inputs contains duplicate entry: {name:?}"));
+            }
+        }
+        let weight_set: std::collections::HashSet<&str> =
+            wandb.w_and_b.iter().map(|w| w.name.as_str()).collect();
+        let public_set: std::collections::HashSet<&str> =
+            self.public_inputs.iter().map(String::as_str).collect();
+        let mut weights = Vec::new();
+        let mut public = Vec::new();
+        let mut private = Vec::new();
+        for io in &self.inputs {
+            let name = io.name.as_str();
+            if weight_set.contains(name) {
+                weights.push(io.name.clone());
+            } else if public_set.contains(name) {
+                public.push(io.name.clone());
+            } else {
+                private.push(io.name.clone());
+            }
+        }
+        Ok(InputNamePartition {
+            weights,
+            public,
+            private,
+        })
+    }
+}
+
+/// Result of [`CircuitParams::partition_input_names`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InputNamePartition {
+    pub weights: Vec<String>,
+    pub public: Vec<String>,
+    pub private: Vec<String>,
 }
 
 fn default_freivalds_reps() -> usize {
@@ -477,6 +568,123 @@ mod tests {
         }"#;
         let params: CircuitParams = serde_json::from_str(json).unwrap();
         assert!(!params.weights_as_inputs);
+    }
+
+    fn make_io(name: &str) -> ONNXIO {
+        ONNXIO {
+            name: name.to_string(),
+            elem_type: 1,
+            shape: vec![1],
+        }
+    }
+
+    fn make_params(input_names: &[&str], public_inputs: &[&str]) -> CircuitParams {
+        CircuitParams {
+            scale_base: 2,
+            scale_exponent: 18,
+            rescale_config: HashMap::new(),
+            inputs: input_names.iter().map(|n| make_io(n)).collect(),
+            outputs: vec![],
+            freivalds_reps: 1,
+            n_bits_config: HashMap::new(),
+            weights_as_inputs: true,
+            proof_system: ProofSystem::default(),
+            proof_config: None,
+            logup_chunk_bits: None,
+            public_inputs: public_inputs.iter().map(|s| s.to_string()).collect(),
+        }
+    }
+
+    fn make_wandb(weight_names: &[&str]) -> WANDB {
+        WANDB {
+            w_and_b: weight_names
+                .iter()
+                .map(|n| ONNXLayer {
+                    id: 0,
+                    name: n.to_string(),
+                    op_type: String::new(),
+                    inputs: Vec::new(),
+                    outputs: Vec::new(),
+                    shape: HashMap::new(),
+                    tensor: None,
+                    params: None,
+                    opset_version_number: 0,
+                })
+                .collect(),
+        }
+    }
+
+    #[test]
+    fn public_inputs_default_empty() {
+        let json = r#"{
+            "scale_base": 2,
+            "scale_exponent": 18,
+            "rescale_config": {},
+            "inputs": [],
+            "outputs": []
+        }"#;
+        let params: CircuitParams = serde_json::from_str(json).unwrap();
+        assert!(params.public_inputs.is_empty());
+    }
+
+    #[test]
+    fn public_inputs_round_trip_through_serde() {
+        let json = r#"{
+            "scale_base": 2,
+            "scale_exponent": 18,
+            "rescale_config": {},
+            "inputs": [
+                {"name": "x", "elem_type": 1, "shape": [1]},
+                {"name": "y", "elem_type": 1, "shape": [1]}
+            ],
+            "outputs": [],
+            "public_inputs": ["x"]
+        }"#;
+        let params: CircuitParams = serde_json::from_str(json).unwrap();
+        assert_eq!(params.public_inputs, vec!["x".to_string()]);
+        let round_tripped = serde_json::to_string(&params).unwrap();
+        let again: CircuitParams = serde_json::from_str(&round_tripped).unwrap();
+        assert_eq!(again.public_inputs, vec!["x".to_string()]);
+    }
+
+    #[test]
+    fn partition_input_names_three_categories() {
+        // weights:  "w1", "w2"
+        // public:   "pub_input"
+        // private:  "act"
+        let params = make_params(&["w1", "act", "pub_input", "w2"], &["pub_input"]);
+        let wandb = make_wandb(&["w1", "w2"]);
+        let p = params.partition_input_names(&wandb).unwrap();
+        assert_eq!(p.weights, vec!["w1".to_string(), "w2".to_string()]);
+        assert_eq!(p.public, vec!["pub_input".to_string()]);
+        assert_eq!(p.private, vec!["act".to_string()]);
+    }
+
+    #[test]
+    fn partition_input_names_weight_takes_precedence_over_public() {
+        // "x" is declared both as a WAI weight and as a public
+        // input. Weights take precedence (weights are baked into
+        // the VK and re-shipping them as public would defeat the
+        // purpose).
+        let params = make_params(&["x", "y"], &["x", "y"]);
+        let wandb = make_wandb(&["x"]);
+        let p = params.partition_input_names(&wandb).unwrap();
+        assert_eq!(p.weights, vec!["x".to_string()]);
+        assert_eq!(p.public, vec!["y".to_string()]);
+        assert!(p.private.is_empty());
+    }
+
+    #[test]
+    fn partition_input_names_with_no_public_decl_routes_unknown_to_private() {
+        // Default behavior (empty public_inputs): every non-weight
+        // input becomes private. Backwards compatible with existing
+        // bundles.
+        let params = make_params(&["w", "a", "b"], &[]);
+        let wandb = make_wandb(&["w"]);
+        let p = params.partition_input_names(&wandb).unwrap();
+        assert_eq!(p.weights, vec!["w".to_string()]);
+        assert!(p.public.is_empty());
+        assert_eq!(p.private, vec!["a".to_string(), "b".to_string()]);
     }
 
     #[test]

@@ -19,6 +19,7 @@ polynomials.workspace = true
 serdes.workspace = true
 sumcheck.workspace = true
 transcript.workspace = true
+tree.workspace = true
 utils.workspace = true
 
 ark-std.workspace = true
@@ -33,6 +34,7 @@ thiserror.workspace = true
 
 [dev-dependencies]
 criterion.workspace = true
+rand_chacha = { workspace = true }
 
 [features]
 default = []

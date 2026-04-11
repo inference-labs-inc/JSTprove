@@ -14,6 +14,8 @@ tiny-keccak.workspace = true
 rmpv.workspace = true
 peakmem-alloc = { version = "0.3.0", optional = true }
 expander_compiler.workspace = true
+gkr.workspace = true
+gkr_engine.workspace = true
 lazy_static = "1.4"
 circuit-std-rs.workspace = true
 ndarray.workspace = true
@@ -31,6 +33,13 @@ jstprove-io = { path = "../jstprove_io" }
 jstprove-onnx = { path = "../jstprove_onnx" }
 jstprove-remainder = { path = "../jstprove_remainder", optional = true }
 arith.workspace = true
+circuit.workspace = true
+goldilocks.workspace = true
+poly_commit.workspace = true
+polynomials.workspace = true
+serdes.workspace = true
+sumcheck.workspace = true
+transcript.workspace = true
 tempfile = "3"
 tracing = "0.1"
 anyhow = "1"
@@ -51,6 +60,13 @@ tempfile = "3"
 criterion = { version = "0.5", features = ["html_reports"] }
 libc = "0.2"
 rayon.workspace = true
+circuit.workspace = true
+goldilocks.workspace = true
+serdes.workspace = true
+transcript.workspace = true
+gkr_hashers.workspace = true
+rand_chacha = { workspace = true }
+jstprove-io = { path = "../jstprove_io" }
 
 [[bench]]
 name = "serialization"

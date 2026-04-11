@@ -97,6 +97,69 @@ const ONNX_FULL_COMMANDS: &[&str] = &[
     "msgpack_compile",
 ];
 
+const HOLOGRAPHIC_COMMANDS: &[&str] = &[
+    "setup_holographic",
+    "prove_holographic",
+    "verify_holographic",
+];
+
+fn run_holographic(matches: &clap::ArgMatches, cmd_type: &str) -> Result<(), String> {
+    use jstprove_circuits::api;
+
+    let config = get_proof_config(matches, None).map_err(|e| format!("proof config: {e}"))?;
+
+    match cmd_type {
+        "setup_holographic" => {
+            let circuit_path =
+                get_arg(matches, "circuit_path").map_err(|_| "--circuit is required")?;
+            let vk_path = get_arg(matches, "vk").map_err(|_| "--vk output path is required")?;
+            let circuit_bytes =
+                std::fs::read(&circuit_path).map_err(|e| format!("read circuit: {e}"))?;
+            let vk_bytes = api::setup_holographic_vk(config, &circuit_bytes)
+                .map_err(|e| format!("holographic setup: {e:?}"))?;
+            std::fs::write(&vk_path, &vk_bytes).map_err(|e| format!("write vk: {e}"))?;
+            eprintln!(
+                "Holographic VK written to {vk_path} ({} bytes)",
+                vk_bytes.len()
+            );
+            Ok(())
+        }
+        "prove_holographic" => {
+            let circuit_path =
+                get_arg(matches, "circuit_path").map_err(|_| "--circuit is required")?;
+            let witness_path = get_arg(matches, "witness").map_err(|_| "--witness is required")?;
+            let proof_path = get_arg(matches, "proof").map_err(|_| "--proof is required")?;
+            let circuit_bytes =
+                std::fs::read(&circuit_path).map_err(|e| format!("read circuit: {e}"))?;
+            let witness_bytes =
+                std::fs::read(&witness_path).map_err(|e| format!("read witness: {e}"))?;
+            let proof_bytes = api::prove_holographic(config, &circuit_bytes, &witness_bytes)
+                .map_err(|e| format!("holographic prove: {e:?}"))?;
+            std::fs::write(&proof_path, &proof_bytes).map_err(|e| format!("write proof: {e}"))?;
+            eprintln!(
+                "Holographic proof written to {proof_path} ({} bytes)",
+                proof_bytes.len()
+            );
+            Ok(())
+        }
+        "verify_holographic" => {
+            let vk_path = get_arg(matches, "vk").map_err(|_| "--vk is required")?;
+            let proof_path = get_arg(matches, "proof").map_err(|_| "--proof is required")?;
+            let vk_bytes = std::fs::read(&vk_path).map_err(|e| format!("read vk: {e}"))?;
+            let proof_bytes = std::fs::read(&proof_path).map_err(|e| format!("read proof: {e}"))?;
+            let ok = api::verify_holographic(config, &vk_bytes, &proof_bytes)
+                .map_err(|e| format!("holographic verify: {e:?}"))?;
+            if ok {
+                eprintln!("Holographic verification: ACCEPTED");
+                Ok(())
+            } else {
+                Err("Holographic verification: REJECTED".to_string())
+            }
+        }
+        _ => Err(format!("unknown holographic command: {cmd_type}")),
+    }
+}
+
 #[allow(clippy::too_many_lines)]
 fn main() {
     let mut file_reader = FileReader {
@@ -106,6 +169,16 @@ fn main() {
     let matches = get_args();
 
     let cmd_type = get_arg(&matches, "type").unwrap_or_default();
+
+    // Holographic commands bypass the standard ONNX/metadata/config
+    // pipeline — they only need --circuit + --vk + --proof + --proof-config.
+    if HOLOGRAPHIC_COMMANDS.contains(&cmd_type.as_str()) {
+        if let Err(e) = run_holographic(&matches, &cmd_type) {
+            eprintln!("Error: {e}");
+            std::process::exit(1);
+        }
+        return;
+    }
     let cli_backend_explicit =
         matches.value_source("backend") == Some(clap::parser::ValueSource::CommandLine);
     let cli_is_remainder = cli_backend_explicit
@@ -260,6 +333,7 @@ fn main() {
             proof_system: ProofSystem::Remainder,
             proof_config: None,
             logup_chunk_bits: None,
+            public_inputs: Vec::new(),
         })
     } else {
         OnnxContext::get_params().ok()

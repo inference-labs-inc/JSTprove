@@ -30,6 +30,7 @@ gf2_128.workspace = true
 mersenne31.workspace = true
 goldilocks.workspace = true
 gkr_hashers.workspace = true
+rand_chacha = { workspace = true }
 
 tynm.workspace = true
 criterion.workspace = true
