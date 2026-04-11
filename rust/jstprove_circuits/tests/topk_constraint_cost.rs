@@ -11,6 +11,9 @@ struct TopKBench {
 
 impl TopKBench {
     fn run_bench(&self) {
+        assert!(self.n <= 2048, "n={} exceeds lane buffer size 2048", self.n);
+        assert!(self.k > 0, "k must be positive");
+        assert!(self.k <= self.n, "k={} exceeds n={}", self.k, self.n);
         let n = self.n;
         let k = self.k;
         let n_bits = self.n_bits;
