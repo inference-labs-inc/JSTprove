@@ -355,20 +355,24 @@ impl MatMulLayer {
             .into());
         }
 
-        let a_batch: usize = a_shape[..a_rank - 2].iter().product();
-        let b_batch: usize = b_shape[..b_rank - 2].iter().product();
+        let a_batch_dims = &a_shape[..a_rank - 2];
+        let b_batch_dims = &b_shape[..b_rank - 2];
+        let a_batch: usize = a_batch_dims.iter().product::<usize>().max(1);
+        let b_batch: usize = b_batch_dims.iter().product::<usize>().max(1);
         let b_is_batched = b_batch > 1;
 
-        if b_is_batched && a_batch > 1 && a_batch != b_batch {
+        // Validate that batch dimensions match element-wise, not just by
+        // flattened product. [2,3,...] vs [1,6,...] both flatten to 6 but
+        // pair wrong slices. Allow broadcasting when one side has no batch
+        // dims (rank-2 input).
+        if b_is_batched && a_batch > 1 && a_batch_dims != b_batch_dims {
             return Err(LayerError::ShapeMismatch {
                 layer: LayerKind::MatMul,
-                expected: vec![a_batch],
-                got: vec![b_batch],
+                expected: a_batch_dims.to_vec(),
+                got: b_batch_dims.to_vec(),
                 var_name: format!(
-                    "MatMul: flattened batch dims A={a_batch} != B={b_batch} \
-                     (A batch {:?}, B batch {:?})",
-                    &a_shape[..a_rank - 2],
-                    &b_shape[..b_rank - 2]
+                    "MatMul: leading batch dimensions must match element-wise; \
+                     A batch {a_batch_dims:?} != B batch {b_batch_dims:?}"
                 ),
             }
             .into());
@@ -755,6 +759,41 @@ mod tests {
             1,0,0,0, 0,1,0,0,
         ];
         assert_eq!(extract_values(&mut api, &out), expected_fields(expected));
+    }
+
+    #[test]
+    fn rejects_mismatched_batch_dims_same_product() {
+        // A: [2, 3, M, K] and B: [1, 6, K, N] both flatten to batch=6
+        // but have incompatible leading axis structure. Must be rejected.
+        let mut shapes_map = HashMap::new();
+        shapes_map.insert("a".to_string(), vec![2, 3, 4, 5]);
+        shapes_map.insert("b".to_string(), vec![1, 6, 5, 7]);
+        shapes_map.insert("y".to_string(), vec![2, 3, 4, 7]);
+
+        let built = matmul_layer(vec!["a".to_string(), "b".to_string()], &shapes_map)
+            .expect("build should succeed");
+
+        let (mut api, _, _) = TestBuilder::new(vec![], vec![], EmptyHintCaller::new());
+
+        let a_vals: Vec<u32> = vec![0; 2 * 3 * 4 * 5];
+        let b_vals: Vec<u32> = vec![0; 1 * 6 * 5 * 7];
+
+        let mut inputs = HashMap::new();
+        inputs.insert(
+            "a".to_string(),
+            tensor_vars(&mut api, &a_vals, &[2, 3, 4, 5]),
+        );
+        inputs.insert(
+            "b".to_string(),
+            tensor_vars(&mut api, &b_vals, &[1, 6, 5, 7]),
+        );
+        let mut logup_ctx = LogupRangeCheckContext::new_default();
+
+        let result = built.apply(&mut api, &mut logup_ctx, &inputs);
+        assert!(
+            result.is_err(),
+            "should reject mismatched batch dims [2,3] vs [1,6] even though product is equal"
+        );
     }
 
     #[test]
