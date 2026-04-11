@@ -472,7 +472,7 @@ fn adversarial_extra_layer_appended() {
 }
 
 #[test]
-fn fuzz_serialized_proof_bitflip_all_rejected() {
+fn fuzz_serialized_proof_bitflip_diagnostic() {
     use serdes::ExpSerde;
 
     let (_pk, vk, eval_points, proof) =
@@ -480,38 +480,27 @@ fn fuzz_serialized_proof_bitflip_all_rejected() {
 
     let mut proof_bytes = Vec::new();
     proof.serialize_into(&mut proof_bytes).unwrap();
+    let total_bytes = proof_bytes.len();
 
     let mut rng = rng_for("bitflip_positions");
     let num_trials = 200;
-    let mut rejected = 0;
     let mut accepted_positions = Vec::new();
 
     for _trial in 0..num_trials {
         use rand::Rng;
-        let byte_idx = rng.gen_range(0..proof_bytes.len());
+        let byte_idx = rng.gen_range(0..total_bytes);
         let bit_idx = rng.gen_range(0..8u8);
 
         let mut corrupted = proof_bytes.clone();
         corrupted[byte_idx] ^= 1 << bit_idx;
 
         let deserialized = HolographicProof::<GoldilocksExt4>::deserialize_from(&corrupted[..]);
-        match deserialized {
-            Ok(bad_proof) => {
-                let mut verifier_t = Sha2T::new();
-                let result = verify::<C, GoldilocksExt4, Sha2T>(
-                    &vk,
-                    &eval_points,
-                    &bad_proof,
-                    &mut verifier_t,
-                );
-                if result.is_err() {
-                    rejected += 1;
-                } else {
-                    accepted_positions.push((byte_idx, bit_idx));
-                }
-            }
-            Err(_) => {
-                rejected += 1;
+        if let Ok(bad_proof) = deserialized {
+            let mut verifier_t = Sha2T::new();
+            let result =
+                verify::<C, GoldilocksExt4, Sha2T>(&vk, &eval_points, &bad_proof, &mut verifier_t);
+            if result.is_ok() {
+                accepted_positions.push((byte_idx, bit_idx));
             }
         }
     }
