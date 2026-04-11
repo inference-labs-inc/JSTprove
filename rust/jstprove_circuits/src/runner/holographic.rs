@@ -164,13 +164,27 @@ where
     use gkr::verifier::holographic_common::{LayerShape, WiringEvals};
 
     let vk_data = auto_decompress_bytes(vk_bytes)?;
-    let vk = HolographicVerifyingKey::deserialize_from(Cursor::new(&*vk_data))
+    let mut vk_cursor = Cursor::new(&*vk_data);
+    let vk = HolographicVerifyingKey::deserialize_from(&mut vk_cursor)
         .map_err(|e| RunError::Deserialize(format!("holographic vk: {e:?}")))?;
+    if vk_cursor.position() != vk_data.len() as u64 {
+        return Err(RunError::Deserialize(format!(
+            "holographic vk: {} trailing bytes",
+            vk_data.len() as u64 - vk_cursor.position()
+        )));
+    }
 
     let proof_data = auto_decompress_bytes(proof_bytes)?;
+    let mut proof_cursor = Cursor::new(&*proof_data);
     let combined =
-        CombinedHolographicProof::<ChallengeField<C>>::deserialize_from(Cursor::new(&*proof_data))
+        CombinedHolographicProof::<ChallengeField<C>>::deserialize_from(&mut proof_cursor)
             .map_err(|e| RunError::Deserialize(format!("combined holographic proof: {e:?}")))?;
+    if proof_cursor.position() != proof_data.len() as u64 {
+        return Err(RunError::Deserialize(format!(
+            "combined holographic proof: {} trailing bytes",
+            proof_data.len() as u64 - proof_cursor.position()
+        )));
+    }
 
     let proving_time_mpi_size = 1usize;
 
@@ -192,11 +206,23 @@ where
     transcript::transcript_verifier_sync(&mut transcript, proving_time_mpi_size);
 
     let layer_count = vk.n_layers;
+    if combined.wiring_claims.len() != layer_count {
+        return Err(RunError::Deserialize(format!(
+            "expected {layer_count} wiring claims (one per VK layer), got {}",
+            combined.wiring_claims.len()
+        )));
+    }
     let mut wiring_claims_by_layer: std::collections::HashMap<
         usize,
         &PerLayerWiringClaims<ChallengeField<C>>,
     > = std::collections::HashMap::new();
     for claim in &combined.wiring_claims {
+        if claim.layer_index >= layer_count {
+            return Err(RunError::Deserialize(format!(
+                "wiring claim layer_index {} exceeds VK layer count {layer_count}",
+                claim.layer_index
+            )));
+        }
         wiring_claims_by_layer.insert(claim.layer_index, claim);
     }
 
@@ -292,6 +318,13 @@ where
             &mut transcript,
             &mut gkr_cursor,
         );
+    }
+
+    if gkr_cursor.position() != combined.gkr_proof.bytes.len() as u64 {
+        return Err(RunError::Deserialize(format!(
+            "gkr proof: {} trailing bytes",
+            combined.gkr_proof.bytes.len() as u64 - gkr_cursor.position()
+        )));
     }
 
     Ok(gkr_verified & holo_verified & verified)

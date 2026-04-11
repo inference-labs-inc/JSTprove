@@ -270,6 +270,7 @@ where
         };
 
         let cst_opening = if let Some(cst_wiring) = &layer_pk.cst {
+            check_cst_eval_point_shape(layer_pk.layer_index, cst_wiring, eval_point)?;
             Some(open_layer_wiring::<C::CircuitField, E, T>(
                 cst_wiring,
                 eval_point.cst_claim,
@@ -381,6 +382,23 @@ fn check_add_eval_point_shape_uni<F: Field>(
             which: "uni",
             expected_n_z: wiring.poly.n_z,
             expected_n_x: wiring.poly.n_x,
+            expected_n_y: 0,
+        });
+    }
+    Ok(())
+}
+
+fn check_cst_eval_point_shape<F: Field>(
+    layer_idx: usize,
+    wiring: &LayerProvingWiring<F>,
+    eval_point: &LayerEvalPoint<impl Field>,
+) -> Result<(), ProveError> {
+    if eval_point.cst_z.len() != wiring.poly.n_z {
+        return Err(ProveError::EvalPointShapeMismatch {
+            layer: layer_idx,
+            which: "cst",
+            expected_n_z: wiring.poly.n_z,
+            expected_n_x: 0,
             expected_n_y: 0,
         });
     }
