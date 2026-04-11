@@ -149,8 +149,6 @@ fn run_constrained_max_bench(n: usize, n_bits: usize) {
                 for &x in &lane {
                     shifted.push(api.add(x, offset));
                 }
-                let max_shifted = api.unconstrained_greater_eq(shifted[0], shifted[1]);
-                let _ = max_shifted;
 
                 let max_offset =
                     jstprove_circuits::circuit_functions::hints::max_min_clip::unconstrained_max(
