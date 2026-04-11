@@ -2958,6 +2958,182 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
                     tensor_layouts.remove(out);
                 }
             }
+            OpType::Constant => {
+                if let Some(super::super::onnx::parser::AttrValue::Tensor(td)) =
+                    layer.attributes.get("value")
+                {
+                    let data = td.as_i64_vec();
+                    let padded = pad_to_size(&data, next_power_of_two(data.len().max(1)));
+                    for out in &layer.outputs {
+                        tensors.insert(out.clone(), padded.clone());
+                    }
+                }
+            }
+            OpType::Split => {
+                let input_name = layer
+                    .inputs
+                    .first()
+                    .ok_or_else(|| anyhow::anyhow!("Split {} has no data input", layer.name))?;
+                let input_data = tensors
+                    .get(input_name)
+                    .ok_or_else(|| {
+                        anyhow::anyhow!("Split {} input '{}' not computed", layer.name, input_name)
+                    })?
+                    .clone();
+
+                let in_shape = tensor_shape_for(input_name).ok_or_else(|| {
+                    anyhow::anyhow!(
+                        "Split {} cannot resolve shape for input '{}'",
+                        layer.name,
+                        input_name
+                    )
+                })?;
+                let rank = in_shape.len();
+
+                let axis_raw = layer.get_int_attr("axis").unwrap_or(0);
+                let axis = if axis_raw < 0 {
+                    (rank as i64 + axis_raw) as usize
+                } else {
+                    axis_raw as usize
+                };
+                anyhow::ensure!(
+                    axis < rank,
+                    "Split {} axis {} out of range for rank {}",
+                    layer.name,
+                    axis_raw,
+                    rank
+                );
+
+                let axis_dim = in_shape[axis];
+                let num_outputs = layer.outputs.len();
+
+                let split_sizes: Vec<usize> =
+                    if let Some(split_name) = layer.inputs.get(1).filter(|n| !n.is_empty()) {
+                        let td = layer.weights.get(split_name).ok_or_else(|| {
+                            anyhow::anyhow!(
+                                "Split {} split input '{}' not found in weights",
+                                layer.name,
+                                split_name
+                            )
+                        })?;
+                        td.as_i64_vec().iter().map(|&v| v as usize).collect()
+                    } else if let Some(vals) = layer.get_ints_attr("split") {
+                        vals.iter().map(|&v| v as usize).collect()
+                    } else {
+                        anyhow::ensure!(
+                            num_outputs > 0 && axis_dim % num_outputs == 0,
+                            "Split {} axis dim {} not divisible by num_outputs {}",
+                            layer.name,
+                            axis_dim,
+                            num_outputs
+                        );
+                        vec![axis_dim / num_outputs; num_outputs]
+                    };
+
+                let mut offset = 0usize;
+                for (out_idx, out_name) in layer.outputs.iter().enumerate() {
+                    let sz = split_sizes[out_idx];
+                    let mut out_shape = in_shape.clone();
+                    out_shape[axis] = sz;
+                    let out_total: usize = out_shape.iter().product();
+
+                    let result: Vec<i64> = (0..out_total)
+                        .map(|out_flat| {
+                            let mut coords = unravel_index_witness(out_flat, &out_shape);
+                            coords[axis] += offset;
+                            let in_flat = ravel_index_witness(&coords, &in_shape);
+                            input_data.get(in_flat).copied().unwrap_or(0)
+                        })
+                        .collect();
+
+                    let padded = pad_to_size(&result, next_power_of_two(out_total.max(1)));
+                    tensors.insert(out_name.clone(), padded);
+                    offset += sz;
+                }
+            }
+            OpType::Where => {
+                let cond_name = layer.inputs.first().ok_or_else(|| {
+                    anyhow::anyhow!("Where {} has no condition input", layer.name)
+                })?;
+                let x_name = layer
+                    .inputs
+                    .get(1)
+                    .ok_or_else(|| anyhow::anyhow!("Where {} has no X input", layer.name))?;
+                let y_name = layer
+                    .inputs
+                    .get(2)
+                    .ok_or_else(|| anyhow::anyhow!("Where {} has no Y input", layer.name))?;
+
+                let cond_data = tensors
+                    .get(cond_name)
+                    .ok_or_else(|| {
+                        anyhow::anyhow!(
+                            "Where {} condition '{}' not computed",
+                            layer.name,
+                            cond_name
+                        )
+                    })?
+                    .clone();
+                let x_data = tensors
+                    .get(x_name)
+                    .ok_or_else(|| {
+                        anyhow::anyhow!("Where {} X '{}' not computed", layer.name, x_name)
+                    })?
+                    .clone();
+                let y_data = tensors
+                    .get(y_name)
+                    .ok_or_else(|| {
+                        anyhow::anyhow!("Where {} Y '{}' not computed", layer.name, y_name)
+                    })?
+                    .clone();
+
+                let out_shape = &layer.output_shape;
+                let out_total: usize = out_shape.iter().product();
+                let out_rank = out_shape.len();
+
+                let cond_shape =
+                    tensor_shape_for(cond_name).unwrap_or_else(|| vec![cond_data.len()]);
+                let x_shape = tensor_shape_for(x_name).unwrap_or_else(|| vec![x_data.len()]);
+                let y_shape = tensor_shape_for(y_name).unwrap_or_else(|| vec![y_data.len()]);
+
+                let broadcast_idx = |out_coords: &[usize], shape: &[usize]| -> usize {
+                    let rank = shape.len();
+                    let pad = out_rank.saturating_sub(rank);
+                    let mut flat = 0usize;
+                    let mut stride = 1usize;
+                    for d in (0..rank).rev() {
+                        let oc = if d + pad < out_rank {
+                            out_coords[d + pad]
+                        } else {
+                            0
+                        };
+                        let c = if shape[d] == 1 { 0 } else { oc };
+                        flat += c * stride;
+                        stride *= shape[d];
+                    }
+                    flat
+                };
+
+                let mut result = Vec::with_capacity(out_total);
+                for out_flat in 0..out_total {
+                    let out_coords = unravel_index_witness(out_flat, out_shape);
+                    let ci = broadcast_idx(&out_coords, &cond_shape);
+                    let xi = broadcast_idx(&out_coords, &x_shape);
+                    let yi = broadcast_idx(&out_coords, &y_shape);
+                    let cond_val = cond_data.get(ci).copied().unwrap_or(0);
+                    if cond_val != 0 {
+                        result.push(x_data.get(xi).copied().unwrap_or(0));
+                    } else {
+                        result.push(y_data.get(yi).copied().unwrap_or(0));
+                    }
+                }
+
+                let padded = pad_to_size(&result, next_power_of_two(out_total.max(1)));
+                for out in &layer.outputs {
+                    tensors.insert(out.clone(), padded.clone());
+                    tensor_layouts.remove(out);
+                }
+            }
             other => {
                 bail!(
                     "witness: unsupported op type {:?} in layer {}",
@@ -3780,6 +3956,64 @@ pub fn prepare_public_shreds(
                     if let Some(ref l) = layout {
                         tensor_layouts.insert(out_name.clone(), l.clone());
                     }
+                }
+            }
+            OpType::Constant => {
+                if let Some(super::super::onnx::parser::AttrValue::Tensor(td)) =
+                    layer.attributes.get("value")
+                {
+                    let sz = next_power_of_two(td.total_elements().max(1));
+                    for out_name in &layer.outputs {
+                        tensor_sizes.insert(out_name.clone(), sz);
+                    }
+                }
+            }
+            OpType::Split => {
+                let in_shape = &layer.output_shape;
+                let rank = in_shape.len();
+                let axis_raw = layer.get_int_attr("axis").unwrap_or(0);
+                let axis = if axis_raw < 0 {
+                    (rank as i64 + axis_raw) as usize
+                } else {
+                    axis_raw as usize
+                };
+                let num_outputs = layer.outputs.len();
+                let split_sizes: Vec<usize> =
+                    if let Some(split_name) = layer.inputs.get(1).filter(|n| !n.is_empty()) {
+                        layer
+                            .weights
+                            .get(split_name)
+                            .map(|td| td.as_i64_vec().iter().map(|&v| v as usize).collect())
+                            .unwrap_or_else(|| {
+                                if axis < rank && num_outputs > 0 {
+                                    vec![in_shape[axis] / num_outputs; num_outputs]
+                                } else {
+                                    vec![]
+                                }
+                            })
+                    } else if let Some(vals) = layer.get_ints_attr("split") {
+                        vals.iter().map(|&v| v as usize).collect()
+                    } else if axis < rank && num_outputs > 0 {
+                        vec![in_shape[axis] / num_outputs; num_outputs]
+                    } else {
+                        vec![]
+                    };
+                for (i, out_name) in layer.outputs.iter().enumerate() {
+                    if let Some(sz) = split_sizes.get(i) {
+                        let mut out_shape = in_shape.clone();
+                        if axis < rank {
+                            out_shape[axis] = *sz;
+                        }
+                        let out_total: usize = out_shape.iter().product();
+                        tensor_sizes.insert(out_name.clone(), next_power_of_two(out_total.max(1)));
+                    }
+                }
+            }
+            OpType::Where => {
+                let out_total: usize = layer.output_shape.iter().product();
+                let sz = next_power_of_two(out_total.max(1));
+                for out_name in &layer.outputs {
+                    tensor_sizes.insert(out_name.clone(), sz);
                 }
             }
             other => {

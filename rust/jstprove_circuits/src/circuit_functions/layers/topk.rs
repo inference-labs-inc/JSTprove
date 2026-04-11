@@ -1,15 +1,24 @@
 // ONNX `TopK` layer for ZK circuits.
 //
 // # ZK approach
-// TopK selects the K largest (or smallest) values along a specified axis.
-// Because comparison and sorting cannot be expressed as low-degree polynomials
-// over a finite field, a sound implementation requires a full sorting/permutation
-// circuit. A hint-only approach (hint + range check) only proves outputs are in
-// range, NOT that they are the actual top-K values — this is unsound.
+// TopK selects the K largest values along a specified axis.  Because
+// comparison and sorting cannot be expressed as low-degree polynomials over a
+// finite field, the actual selection is performed outside the circuit by a
+// hint function that returns K values and their original indices.
 //
-// # Current status
-// TopK is **not supported** in the Expander backend. `apply` returns an error
-// immediately. Use the Remainder backend or remove TopK from the model.
+// The circuit then constrains:
+// (a) **Membership** — each output value equals an input element at the
+//     hint-provided index, verified via a multiplexer over the axis lane.
+// (b) **Sorted order** — consecutive output values satisfy v[i] >= v[i+1],
+//     verified by shifting to unsigned and applying a LogUp range check on
+//     the difference.
+// (c) **Top-K bound** — every non-selected input element is <= the K-th
+//     (smallest selected) value, verified via conditional range checks.
+// (d) **Index uniqueness** — the K hint-provided indices are pairwise
+//     distinct.
+//
+// Together these prove that the K output values are a correct sorted
+// selection of the K largest input values along the axis.
 //
 // # Outputs
 // TopK has two ONNX outputs: Values (output[0]) and Indices (output[1]).
@@ -22,31 +31,27 @@
 // - `sorted`  (default 1) : output is always in descending order.
 //
 // # K input
-// In ONNX opset ≥ 10 K is supplied as input[1], an int64 scalar tensor.
+// In ONNX opset >= 10 K is supplied as input[1], an int64 scalar tensor.
 // It MUST be a compile-time constant (model initializer or Constant node).
 
 use std::collections::HashMap;
 
-use ndarray::ArrayD;
+use ndarray::{ArrayD, IxDyn};
 
-use expander_compiler::frontend::{Config, RootAPI, Variable};
+use expander_compiler::frontend::{CircuitField, Config, FieldArith, RootAPI, Variable};
 
 use crate::circuit_functions::{
     CircuitError,
     gadgets::LogupRangeCheckContext,
+    hints::topk::TOPK_HINT_KEY,
     layers::{LayerError, LayerKind, layer_ops::LayerOp},
     utils::onnx_model::get_w_or_b,
 };
 
-// -------- Struct --------
-
-// Fields are populated during `build` but never read by `apply` (which always
-// returns an error). Kept so `build` can be reused when a sorting circuit is
-// eventually implemented.
-#[allow(dead_code)]
 pub struct TopKLayer {
     inputs: Vec<String>,
     values_output_name: String,
+    input_shape: Vec<usize>,
     axis: usize,
     k: usize,
     output_shape: Vec<usize>,
@@ -54,28 +59,156 @@ pub struct TopKLayer {
     scaling: u64,
 }
 
-// -------- Implementation --------
-
 impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for TopKLayer {
+    #[allow(
+        clippy::too_many_lines,
+        clippy::cast_possible_wrap,
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss
+    )]
     fn apply(
         &self,
-        _api: &mut Builder,
-        _logup_ctx: &mut LogupRangeCheckContext,
-        _input: &HashMap<String, ArrayD<Variable>>,
+        api: &mut Builder,
+        logup_ctx: &mut LogupRangeCheckContext,
+        input: &HashMap<String, ArrayD<Variable>>,
     ) -> Result<(Vec<String>, ArrayD<Variable>), CircuitError> {
-        // TopK is not soundly implementable via hint alone: a hint + range check
-        // only proves that outputs are in range, NOT that they are the actual
-        // top-K values of the input. Full soundness requires a sorting circuit
-        // with permutation constraints, which is not yet implemented.
-        Err(LayerError::Other {
+        let data_name = &self.inputs[0];
+        let data = input
+            .get(data_name)
+            .ok_or_else(|| LayerError::MissingInput {
+                layer: LayerKind::TopK,
+                name: data_name.clone(),
+            })?;
+
+        let data_flat = data.as_slice().ok_or_else(|| LayerError::InvalidShape {
             layer: LayerKind::TopK,
-            msg: "TopK is not yet supported in any backend: soundly proving \
-                  top-K selection requires a sorting/permutation circuit that is not \
-                  yet implemented. Remove TopK from the model or await a backend that \
-                  implements sorting/permutation circuits."
-                .to_string(),
+            msg: "data tensor is not contiguous".to_string(),
+        })?;
+
+        let axis = self.axis;
+        let k = self.k;
+        let axis_dim = self.input_shape[axis];
+
+        let inner: usize = self.input_shape[axis + 1..].iter().product();
+        let outer: usize = self.input_shape[..axis].iter().product();
+
+        let shift_n_bits = self.n_bits + 1;
+        let offset_val = 1u64
+            .checked_shl(self.n_bits as u32)
+            .ok_or_else(|| LayerError::Other {
+                layer: LayerKind::TopK,
+                msg: format!("n_bits {} too large for shift offset", self.n_bits),
+            })?;
+        let offset = api.constant(CircuitField::<C>::from_u256(ethnum::U256::from(offset_val)));
+        let scale_var = api.constant(CircuitField::<C>::from_u256(ethnum::U256::from(
+            self.scaling,
+        )));
+
+        let out_total: usize = self.output_shape.iter().product();
+        let mut out_flat = vec![api.constant(0u32); out_total];
+
+        for o in 0..outer {
+            for inr in 0..inner {
+                let lane: Vec<Variable> = (0..axis_dim)
+                    .map(|a| data_flat[(o * axis_dim + a) * inner + inr])
+                    .collect();
+
+                let mut hint_inputs = Vec::with_capacity(axis_dim + 1);
+                hint_inputs.extend_from_slice(&lane);
+                hint_inputs.push(scale_var);
+
+                let hint_out = api.new_hint(TOPK_HINT_KEY, &hint_inputs, 2 * k);
+
+                let values = &hint_out[..k];
+                let indices = &hint_out[k..];
+
+                for j in 0..k {
+                    let idx_var = indices[j];
+                    let val_var = values[j];
+
+                    let mut mux_sum = api.constant(0u32);
+                    let mut matched_sum = api.constant(0u32);
+                    for (a, &elem) in lane.iter().enumerate() {
+                        let a_var = api.constant(a as u32);
+                        let diff = api.sub(idx_var, a_var);
+                        let eq = api.is_zero(diff);
+                        let selected = api.mul(eq, elem);
+                        mux_sum = api.add(mux_sum, selected);
+                        matched_sum = api.add(matched_sum, eq);
+                    }
+                    let one = api.constant(1u32);
+                    api.assert_is_equal(matched_sum, one);
+                    api.assert_is_equal(val_var, mux_sum);
+
+                    logup_ctx
+                        .range_check::<C, Builder>(api, val_var, self.n_bits)
+                        .map_err(|e| LayerError::Other {
+                            layer: LayerKind::TopK,
+                            msg: format!("range check on output value failed: {e}"),
+                        })?;
+
+                    let out_idx = (o * k + j) * inner + inr;
+                    out_flat[out_idx] = val_var;
+                }
+
+                for j in 0..k.saturating_sub(1) {
+                    let diff = api.sub(values[j], values[j + 1]);
+                    let shifted = api.add(diff, offset);
+                    logup_ctx
+                        .range_check::<C, Builder>(api, shifted, shift_n_bits)
+                        .map_err(|e| LayerError::Other {
+                            layer: LayerKind::TopK,
+                            msg: format!("sorted order range check failed: {e}"),
+                        })?;
+                }
+
+                for i in 0..k {
+                    for j in (i + 1)..k {
+                        let diff = api.sub(indices[i], indices[j]);
+                        let is_eq = api.is_zero(diff);
+                        let zero = api.constant(0u32);
+                        api.assert_is_equal(is_eq, zero);
+                    }
+                }
+
+                let min_val = values[k - 1];
+                for (a, &elem) in lane.iter().enumerate() {
+                    let a_var = api.constant(a as u32);
+                    let mut is_sel = api.constant(0u32);
+                    for idx_var in &indices[..k] {
+                        let diff = api.sub(*idx_var, a_var);
+                        let eq = api.is_zero(diff);
+                        is_sel = api.add(is_sel, eq);
+                    }
+
+                    let delta = api.sub(min_val, elem);
+                    let delta_shifted = api.add(delta, offset);
+
+                    let one_const = api.constant(1u32);
+                    let not_sel = api.sub(one_const, is_sel);
+                    let check_val = api.mul(not_sel, delta_shifted);
+                    let filler = api.mul(is_sel, offset);
+                    let final_check = api.add(check_val, filler);
+
+                    logup_ctx
+                        .range_check::<C, Builder>(api, final_check, shift_n_bits)
+                        .map_err(|e| LayerError::Other {
+                            layer: LayerKind::TopK,
+                            msg: format!("top-K bound range check failed: {e}"),
+                        })?;
+                }
+            }
         }
-        .into())
+
+        let out_array =
+            ArrayD::from_shape_vec(IxDyn(&self.output_shape), out_flat).map_err(|e| {
+                LayerError::InvalidShape {
+                    layer: LayerKind::TopK,
+                    msg: format!("output reshape failed: {e}"),
+                }
+            })?;
+
+        Ok((vec![self.values_output_name.clone()], out_array))
     }
 
     #[allow(
@@ -92,7 +225,6 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for TopKLayer {
         _index: usize,
         layer_context: &crate::circuit_functions::utils::build_layers::BuildLayerContext,
     ) -> Result<Box<dyn LayerOp<C, Builder>>, CircuitError> {
-        // input[0] = data tensor.
         layer
             .inputs
             .first()
@@ -101,7 +233,6 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for TopKLayer {
                 name: "data input".to_string(),
             })?;
 
-        // output[0] = Values (required).
         let values_output_name = layer
             .outputs
             .first()
@@ -111,13 +242,6 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for TopKLayer {
             })?
             .clone();
 
-        // output[1] = Indices — not registered in the Expander backend.
-        // Models that only use the values output work fine; if a downstream
-        // layer actually consumes the indices tensor it will fail with a
-        // clear missing-tensor error at that point.
-
-        // Read K from input[1]. It may come from initializers or from
-        // layer.params constant-node injection.
         let k_name = layer
             .inputs
             .get(1)
@@ -202,7 +326,6 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for TopKLayer {
         }
         let k = k as usize;
 
-        // Resolve axis (default −1).
         let input_name = layer.inputs.first().unwrap();
         let input_shape = layer_context
             .shapes_map
@@ -210,7 +333,8 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for TopKLayer {
             .ok_or_else(|| LayerError::InvalidShape {
                 layer: LayerKind::TopK,
                 msg: format!("missing input shape for '{input_name}'"),
-            })?;
+            })?
+            .clone();
         let rank = input_shape.len();
 
         let axis_raw: i64 = layer
@@ -297,7 +421,6 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for TopKLayer {
             .into());
         }
 
-        // Compute expected output shape: same as input but with axis dimension = K.
         let expected_output_shape: Vec<usize> = input_shape
             .iter()
             .enumerate()
@@ -336,6 +459,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for TopKLayer {
         Ok(Box::new(Self {
             inputs: layer.inputs.clone(),
             values_output_name,
+            input_shape,
             axis,
             k,
             output_shape,

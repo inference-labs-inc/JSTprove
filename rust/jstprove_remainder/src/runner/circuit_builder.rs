@@ -666,6 +666,75 @@ pub fn build_circuit(model: &QuantizedModel, input_size: usize) -> Result<BuildR
                     true,
                 );
             }
+            OpType::Constant => {
+                if let Some(crate::onnx::parser::AttrValue::Tensor(td)) =
+                    layer.attributes.get("value")
+                {
+                    let sz = td.total_elements().max(1);
+                    let out_nv = num_vars_for(sz);
+                    for out in &layer.outputs {
+                        tensor_num_vars.insert(out.clone(), out_nv);
+                    }
+                }
+            }
+            OpType::Split => {
+                let in_shape = &layer.output_shape;
+                let rank = in_shape.len();
+                let axis_raw = layer.get_int_attr("axis").unwrap_or(0);
+                let axis = if axis_raw < 0 {
+                    (rank as i64 + axis_raw) as usize
+                } else {
+                    axis_raw as usize
+                };
+                let num_outputs = layer.outputs.len();
+                let split_sizes: Vec<usize> =
+                    if let Some(split_name) = layer.inputs.get(1).filter(|n| !n.is_empty()) {
+                        layer
+                            .weights
+                            .get(split_name)
+                            .map(|td| td.as_i64_vec().iter().map(|&v| v as usize).collect())
+                            .unwrap_or_else(|| {
+                                if axis < rank && num_outputs > 0 {
+                                    vec![in_shape[axis] / num_outputs; num_outputs]
+                                } else {
+                                    vec![]
+                                }
+                            })
+                    } else if let Some(vals) = layer.get_ints_attr("split") {
+                        vals.iter().map(|&v| v as usize).collect()
+                    } else if axis < rank && num_outputs > 0 {
+                        vec![in_shape[axis] / num_outputs; num_outputs]
+                    } else {
+                        vec![]
+                    };
+                let in_name = layer.inputs.first();
+                let in_nv = in_name.and_then(|n| tensor_num_vars.get(n)).copied();
+                for (i, out_name) in layer.outputs.iter().enumerate() {
+                    if let Some(sz) = split_sizes.get(i) {
+                        let mut out_shape = in_shape.clone();
+                        if axis < rank {
+                            out_shape[axis] = *sz;
+                        }
+                        let out_total: usize = out_shape.iter().product();
+                        let out_nv = num_vars_for(out_total.max(1));
+                        tensor_num_vars.insert(out_name.clone(), out_nv);
+                    } else if let Some(nv) = in_nv {
+                        tensor_num_vars.insert(out_name.clone(), nv);
+                    }
+                }
+            }
+            OpType::Where => {
+                add_committed_passthrough(
+                    &mut builder,
+                    &committed,
+                    layer,
+                    &mut tensor_nodes,
+                    &mut tensor_num_vars,
+                    &mut tensor_layouts,
+                    &mut manifest,
+                    false,
+                );
+            }
             other => {
                 bail!(
                     "circuit builder: unsupported op type {:?} in layer {}",
