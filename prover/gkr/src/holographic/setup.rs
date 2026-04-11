@@ -106,17 +106,23 @@ impl ExpSerde for LayerWiringCommitment {
         let k_pad = u64::deserialize_from(&mut reader)? as usize;
         let log_k_pad = u64::deserialize_from(&mut reader)? as usize;
         let total_vars = u64::deserialize_from(&mut reader)? as usize;
+        let n_z_u32 = u32::try_from(commitment.n_z).map_err(|_| SerdeError::DeserializeError)?;
+        let n_x_u32 = u32::try_from(commitment.n_x).map_err(|_| SerdeError::DeserializeError)?;
         let m_z = 1usize
-            .checked_shl(commitment.n_z as u32)
+            .checked_shl(n_z_u32)
             .ok_or(SerdeError::DeserializeError)?;
         let m_x = 1usize
-            .checked_shl(commitment.n_x as u32)
+            .checked_shl(n_x_u32)
             .ok_or(SerdeError::DeserializeError)?;
         let m_y = match arity {
             poly_commit::whir::SparseArity::Two => 1,
-            poly_commit::whir::SparseArity::Three => 1usize
-                .checked_shl(commitment.n_y as u32)
-                .ok_or(SerdeError::DeserializeError)?,
+            poly_commit::whir::SparseArity::Three => {
+                let n_y_u32 =
+                    u32::try_from(commitment.n_y).map_err(|_| SerdeError::DeserializeError)?;
+                1usize
+                    .checked_shl(n_y_u32)
+                    .ok_or(SerdeError::DeserializeError)?
+            }
         };
         if commitment.nnz == 0 {
             return Err(SerdeError::DeserializeError);
@@ -335,7 +341,7 @@ impl HolographicVerifyingKey {
 impl ExpSerde for HolographicVerifyingKey {
     fn serialize_into<W: std::io::Write>(&self, mut writer: W) -> SerdeResult<()> {
         self.version.serialize_into(&mut writer)?;
-        (self.n_layers as u64).serialize_into(&mut writer)?;
+        (self.layers.len() as u64).serialize_into(&mut writer)?;
         (self.log_input_size as u64).serialize_into(&mut writer)?;
         (self.n_rnd_coefs as u64).serialize_into(&mut writer)?;
         for layer in &self.layers {
@@ -595,18 +601,19 @@ where
     // (arity, nnz, m_z, m_x, m_y) so the VK does not strictly
     // need to carry it; we expose it on LayerWiringCommitment for
     // convenience.
+    let err = || SetupError::SparseCommit { layer: layer_index };
     let m_z = 1usize
-        .checked_shl(poly.n_z as u32)
-        .ok_or(SetupError::SparseCommit { layer: layer_index })?;
+        .checked_shl(u32::try_from(poly.n_z).map_err(|_| err())?)
+        .ok_or_else(err)?;
     let m_x = 1usize
-        .checked_shl(poly.n_x as u32)
-        .ok_or(SetupError::SparseCommit { layer: layer_index })?;
+        .checked_shl(u32::try_from(poly.n_x).map_err(|_| err())?)
+        .ok_or_else(err)?;
     let m_y = if poly.arity == poly_commit::whir::SparseArity::Two {
         1
     } else {
         1usize
-            .checked_shl(poly.n_y as u32)
-            .ok_or(SetupError::SparseCommit { layer: layer_index })?
+            .checked_shl(u32::try_from(poly.n_y).map_err(|_| err())?)
+            .ok_or_else(err)?
     };
     let layout = SparseLayout::compute(poly.arity, poly.nnz(), m_z, m_x, m_y);
 
