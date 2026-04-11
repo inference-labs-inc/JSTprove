@@ -672,13 +672,34 @@ pub fn build_circuit(model: &QuantizedModel, input_size: usize) -> Result<BuildR
                 {
                     let sz = td.total_elements().max(1);
                     let out_nv = num_vars_for(sz);
+                    let shred_name = format!("{}_out", layer.name);
+                    let node = builder.add_input_shred(&shred_name, out_nv, &committed);
+                    manifest.insert(
+                        shred_name,
+                        ShredEntry {
+                            num_vars: out_nv,
+                            visibility: Visibility::Committed,
+                        },
+                    );
                     for out in &layer.outputs {
+                        tensor_nodes.insert(out.clone(), node.clone());
                         tensor_num_vars.insert(out.clone(), out_nv);
                     }
                 }
             }
             OpType::Split => {
-                let in_shape = &layer.output_shape;
+                let input_name = layer
+                    .inputs
+                    .first()
+                    .ok_or_else(|| anyhow::anyhow!("Split {} has no data input", layer.name))?;
+                let in_shape: Vec<usize> = model
+                    .graph
+                    .layers
+                    .iter()
+                    .find(|l| l.outputs.iter().any(|o| o == input_name))
+                    .map(|l| l.output_shape.clone())
+                    .or_else(|| model.graph.input_shapes.get(input_name).cloned())
+                    .unwrap_or_else(|| layer.output_shape.clone());
                 let rank = in_shape.len();
                 let axis_raw = layer.get_int_attr("axis").unwrap_or(0);
                 let axis = if axis_raw < 0 {
@@ -686,6 +707,14 @@ pub fn build_circuit(model: &QuantizedModel, input_size: usize) -> Result<BuildR
                 } else {
                     axis_raw as usize
                 };
+                anyhow::ensure!(
+                    axis < rank,
+                    "Split {} axis {} out of range for rank {}",
+                    layer.name,
+                    axis_raw,
+                    rank
+                );
+                let axis_dim = in_shape[axis];
                 let num_outputs = layer.outputs.len();
                 let split_sizes: Vec<usize> =
                     if let Some(split_name) = layer.inputs.get(1).filter(|n| !n.is_empty()) {
@@ -694,32 +723,33 @@ pub fn build_circuit(model: &QuantizedModel, input_size: usize) -> Result<BuildR
                             .get(split_name)
                             .map(|td| td.as_i64_vec().iter().map(|&v| v as usize).collect())
                             .unwrap_or_else(|| {
-                                if axis < rank && num_outputs > 0 {
-                                    vec![in_shape[axis] / num_outputs; num_outputs]
+                                if num_outputs > 0 && axis_dim % num_outputs == 0 {
+                                    vec![axis_dim / num_outputs; num_outputs]
                                 } else {
                                     vec![]
                                 }
                             })
                     } else if let Some(vals) = layer.get_ints_attr("split") {
                         vals.iter().map(|&v| v as usize).collect()
-                    } else if axis < rank && num_outputs > 0 {
-                        vec![in_shape[axis] / num_outputs; num_outputs]
+                    } else if num_outputs > 0 && axis_dim % num_outputs == 0 {
+                        vec![axis_dim / num_outputs; num_outputs]
                     } else {
                         vec![]
                     };
-                let in_name = layer.inputs.first();
-                let in_nv = in_name.and_then(|n| tensor_num_vars.get(n)).copied();
+                let input_node = tensor_nodes.get(input_name).cloned();
+                let input_layout = tensor_layouts.get(input_name).cloned();
                 for (i, out_name) in layer.outputs.iter().enumerate() {
-                    if let Some(sz) = split_sizes.get(i) {
-                        let mut out_shape = in_shape.clone();
-                        if axis < rank {
-                            out_shape[axis] = *sz;
-                        }
-                        let out_total: usize = out_shape.iter().product();
-                        let out_nv = num_vars_for(out_total.max(1));
-                        tensor_num_vars.insert(out_name.clone(), out_nv);
-                    } else if let Some(nv) = in_nv {
-                        tensor_num_vars.insert(out_name.clone(), nv);
+                    let sz = split_sizes.get(i).copied().unwrap_or(axis_dim);
+                    let mut out_shape = in_shape.clone();
+                    out_shape[axis] = sz;
+                    let out_total: usize = out_shape.iter().product();
+                    let out_nv = num_vars_for(out_total.max(1));
+                    if let Some(ref node) = input_node {
+                        tensor_nodes.insert(out_name.clone(), node.clone());
+                    }
+                    tensor_num_vars.insert(out_name.clone(), out_nv);
+                    if let Some(ref layout) = input_layout {
+                        tensor_layouts.insert(out_name.clone(), layout.clone());
                     }
                 }
             }
@@ -732,7 +762,7 @@ pub fn build_circuit(model: &QuantizedModel, input_size: usize) -> Result<BuildR
                     &mut tensor_num_vars,
                     &mut tensor_layouts,
                     &mut manifest,
-                    false,
+                    true,
                 );
             }
             other => {

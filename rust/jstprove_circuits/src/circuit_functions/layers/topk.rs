@@ -161,8 +161,9 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for TopKLayer {
                     api.assert_is_equal(matched_counts[j], one);
                     api.assert_is_equal(values[j], mux_sums[j]);
 
+                    let val_shifted = api.add(values[j], offset);
                     logup_ctx
-                        .range_check::<C, Builder>(api, values[j], self.n_bits)
+                        .range_check::<C, Builder>(api, val_shifted, shift_n_bits)
                         .map_err(|e| LayerError::Other {
                             layer: LayerKind::TopK,
                             msg: format!("range check on output value failed: {e}"),
