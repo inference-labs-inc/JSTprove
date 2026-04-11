@@ -776,7 +776,7 @@ mod tests {
         let (mut api, _, _) = TestBuilder::new(vec![], vec![], EmptyHintCaller::new());
 
         let a_vals: Vec<u32> = vec![0; 2 * 3 * 4 * 5];
-        let b_vals: Vec<u32> = vec![0; 1 * 6 * 5 * 7];
+        let b_vals: Vec<u32> = vec![0; 6 * 5 * 7];
 
         let mut inputs = HashMap::new();
         inputs.insert(
