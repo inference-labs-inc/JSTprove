@@ -270,6 +270,7 @@ where
         };
 
         let cst_opening = if let Some(cst_wiring) = &layer_pk.cst {
+            check_cst_eval_point_shape(layer_pk.layer_index, cst_wiring, eval_point)?;
             Some(open_layer_wiring::<C::CircuitField, E, T>(
                 cst_wiring,
                 eval_point.cst_claim,
@@ -381,6 +382,23 @@ fn check_add_eval_point_shape_uni<F: Field>(
             which: "uni",
             expected_n_z: wiring.poly.n_z,
             expected_n_x: wiring.poly.n_x,
+            expected_n_y: 0,
+        });
+    }
+    Ok(())
+}
+
+fn check_cst_eval_point_shape<F: Field>(
+    layer_idx: usize,
+    wiring: &LayerProvingWiring<F>,
+    eval_point: &LayerEvalPoint<impl Field>,
+) -> Result<(), ProveError> {
+    if eval_point.cst_z.len() != wiring.poly.n_z {
+        return Err(ProveError::EvalPointShapeMismatch {
+            layer: layer_idx,
+            which: "cst",
+            expected_n_z: wiring.poly.n_z,
+            expected_n_x: 0,
             expected_n_y: 0,
         });
     }
@@ -612,6 +630,46 @@ mod tests {
                 ..
             }
         ));
+    }
+
+    #[test]
+    fn prove_rejects_cst_eval_point_shape_mismatch() {
+        use circuit::GateConst;
+        let mut rng = rng_for("prove_cst_shape_mismatch");
+        let mut layer0 = make_layer(2, 2);
+        layer0.const_.push(GateConst {
+            i_ids: [],
+            o_id: 0,
+            coef_type: CoefType::Constant,
+            coef: Goldilocks::ONE,
+            gate_type: 0,
+        });
+        layer0.mul.push(mul_gate(0, 1, 2, 5));
+        let circuit: Circuit<C> = Circuit {
+            layers: vec![layer0],
+            public_input: Vec::new(),
+            expected_num_output_zeros: 0,
+            rnd_coefs_identified: false,
+            rnd_coefs: Vec::new(),
+        };
+        let (pk, _vk) = setup::<C>(circuit).unwrap();
+        assert!(pk.layers[0].cst.is_some(), "layer must have cst wiring");
+        let mut eval_points = random_eval_points(&mut rng, &pk);
+        eval_points[0].cst_z.push(GoldilocksExt4::ZERO);
+        let mut transcript = Sha2T::new();
+        let err =
+            prove::<C, GoldilocksExt4, Sha2T>(&pk, &eval_points, &mut transcript).unwrap_err();
+        assert!(
+            matches!(
+                err,
+                ProveError::EvalPointShapeMismatch {
+                    layer: 0,
+                    which: "cst",
+                    ..
+                }
+            ),
+            "expected cst shape mismatch, got {err:?}"
+        );
     }
 
     #[test]
