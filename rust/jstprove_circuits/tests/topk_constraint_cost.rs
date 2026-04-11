@@ -57,6 +57,7 @@ impl TopKBench {
                     let values = &hint_out[..k];
 
                     let mut logup_ctx = LogupRangeCheckContext::new_default();
+                    logup_ctx.init::<BN254Config, Builder>(api);
 
                     let mut membership_prods: Vec<Variable> =
                         (0..k).map(|_| api.constant(1u32)).collect();
@@ -97,6 +98,8 @@ impl TopKBench {
                             shift_n_bits,
                         );
                     }
+
+                    logup_ctx.finalize::<BN254Config, Builder>(api);
                 });
             }
         }
@@ -158,6 +161,7 @@ fn run_constrained_max_bench(n: usize, n_bits: usize) {
 
                 let check_bits = shift_exp + 1;
                 let mut logup_ctx = LogupRangeCheckContext::new_default();
+                logup_ctx.init::<BN254Config, Builder>(api);
                 let mut prod = api.constant(1);
                 for &x in &lane {
                     let delta = api.sub(max_raw, x);
@@ -165,6 +169,7 @@ fn run_constrained_max_bench(n: usize, n_bits: usize) {
                     prod = api.mul(prod, delta);
                 }
                 api.assert_is_zero(prod);
+                logup_ctx.finalize::<BN254Config, Builder>(api);
             });
         }
     }
