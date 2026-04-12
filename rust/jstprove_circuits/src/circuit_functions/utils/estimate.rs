@@ -26,9 +26,9 @@ impl EstimationConfig {
     }
 
     #[must_use]
-    pub fn bn254_defaults() -> Self {
+    pub fn for_field(n_bits: usize) -> Self {
         Self {
-            n_bits: 64,
+            n_bits,
             chunk_bits: DEFAULT_LOGUP_CHUNK_BITS,
             scale_exponent: 18,
             freivalds_reps: 1,
@@ -37,14 +37,13 @@ impl EstimationConfig {
     }
 
     #[must_use]
+    pub fn bn254_defaults() -> Self {
+        Self::for_field(64)
+    }
+
+    #[must_use]
     pub fn goldilocks_defaults() -> Self {
-        Self {
-            n_bits: 31,
-            chunk_bits: DEFAULT_LOGUP_CHUNK_BITS,
-            scale_exponent: 18,
-            freivalds_reps: 1,
-            rescale_config: HashMap::new(),
-        }
+        Self::for_field(31)
     }
 
     fn rescale_queries_per_element(&self) -> u64 {
@@ -55,6 +54,57 @@ impl EstimationConfig {
 
     fn relu_queries_per_element(&self) -> u64 {
         self.n_bits.div_ceil(self.chunk_bits) as u64
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+struct OpEstimate {
+    out_elems: u64,
+    arithmetic: u64,
+    range_check_queries: u64,
+}
+
+impl OpEstimate {
+    const fn zero(out_elems: u64) -> Self {
+        Self {
+            out_elems,
+            arithmetic: 0,
+            range_check_queries: 0,
+        }
+    }
+
+    fn elementwise(
+        out_elems: u64,
+        arith_mult: u64,
+        query_kind: QueryKind,
+        config: &EstimationConfig,
+    ) -> Self {
+        Self {
+            out_elems,
+            arithmetic: out_elems.saturating_mul(arith_mult),
+            range_check_queries: query_kind.queries_for(out_elems, config),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+enum QueryKind {
+    None,
+    Rescale,
+    Relu(u64),
+    RescaleIfEnabled(u64),
+}
+
+impl QueryKind {
+    fn queries_for(self, out_elems: u64, config: &EstimationConfig) -> u64 {
+        match self {
+            Self::None => 0,
+            Self::Rescale => out_elems.saturating_mul(config.rescale_queries_per_element()),
+            Self::Relu(mult) => {
+                out_elems.saturating_mul(config.relu_queries_per_element().saturating_mul(mult))
+            }
+            Self::RescaleIfEnabled(rescale_queries) => rescale_queries,
+        }
     }
 }
 
@@ -93,6 +143,18 @@ fn product(shape: &[usize]) -> u64 {
     shape.iter().map(|&d| d.max(1) as u64).product()
 }
 
+fn spatial_product(shape: &[usize]) -> u64 {
+    if shape.len() >= 4 {
+        shape[2..].iter().map(|&d| d as u64).product()
+    } else {
+        1
+    }
+}
+
+fn last_dim(shape: &[usize]) -> u64 {
+    shape.last().map_or(1, |&d| d as u64)
+}
+
 #[allow(clippy::cast_possible_truncation)]
 fn matmul_cost(rows: u64, inner: u64, cols: u64, freivalds_reps: usize) -> u64 {
     let rows_w = u128::from(rows);
@@ -114,259 +176,36 @@ fn matmul_cost(rows: u64, inner: u64, cols: u64, freivalds_reps: usize) -> u64 {
     cost_full.min(u128::from(u64::MAX)) as u64
 }
 
-fn resolve_shape<'a, S: BuildHasher>(
-    name: &str,
-    shapes: &'a HashMap<String, Vec<usize>, S>,
-) -> Option<&'a Vec<usize>> {
-    shapes.get(name)
+struct ShapeCtx<'a> {
+    input_shapes: &'a [&'a [usize]],
+    output_shapes: &'a [&'a [usize]],
 }
 
-fn estimate_linear<S: BuildHasher>(
-    input_names: &[String],
-    output_names: &[String],
-    shapes: &HashMap<String, Vec<usize>, S>,
+impl<'a> ShapeCtx<'a> {
+    fn in0(&self) -> Option<&'a [usize]> {
+        self.input_shapes.first().copied()
+    }
+
+    fn in1(&self) -> Option<&'a [usize]> {
+        self.input_shapes.get(1).copied()
+    }
+
+    fn out0(&self) -> Option<&'a [usize]> {
+        self.output_shapes.first().copied()
+    }
+
+    fn out_elems(&self) -> u64 {
+        self.out0().map_or(0, product)
+    }
+}
+
+fn estimate_linear(
+    ctx: &ShapeCtx<'_>,
     out_elems: u64,
     rescale_queries: u64,
     config: &EstimationConfig,
-) -> (u64, u64, u64) {
-    let in0_shape = input_names.first().and_then(|n| resolve_shape(n, shapes));
-    let out_shape = output_names.first().and_then(|n| resolve_shape(n, shapes));
-    let (ell, m, n) = matmul_dims(in0_shape, out_shape);
-    let batch = matmul_batch_from_output(out_shape, ell, n);
-    let arith = batch.saturating_mul(matmul_cost(ell, m, n, config.freivalds_reps));
-    (out_elems, arith, rescale_queries)
-}
-
-fn estimate_conv<S: BuildHasher>(
-    input_names: &[String],
-    shapes: &HashMap<String, Vec<usize>, S>,
-    out_elems: u64,
-    rescale_queries: u64,
-) -> (u64, u64, u64) {
-    let in1_shape = input_names.get(1).and_then(|n| resolve_shape(n, shapes));
-    let kernel_volume = in1_shape.map_or(9, |w| {
-        if w.len() >= 4 {
-            w[2..].iter().map(|&d| d as u64).product()
-        } else {
-            1
-        }
-    });
-    let channels_per_group = in1_shape.map_or(1, |w| if w.len() >= 2 { w[1] as u64 } else { 1 });
-    let inner_dim = kernel_volume.saturating_mul(channels_per_group);
-    let arith = out_elems.saturating_mul(inner_dim.saturating_mul(2).saturating_sub(1));
-    (out_elems, arith, rescale_queries)
-}
-
-fn estimate_elementwise_activation(
-    out_elems: u64,
-    queries_mult: u64,
-    arith_mult: u64,
-    config: &EstimationConfig,
-) -> (u64, u64, u64) {
-    let queries = out_elems.saturating_mul(
-        config
-            .relu_queries_per_element()
-            .saturating_mul(queries_mult),
-    );
-    let arith = out_elems.saturating_mul(arith_mult);
-    (out_elems, arith, queries)
-}
-
-fn estimate_pool<S: BuildHasher>(
-    op_type: &str,
-    input_names: &[String],
-    shapes: &HashMap<String, Vec<usize>, S>,
-    out_shape: Option<&Vec<usize>>,
-    out_elems: u64,
-    config: &EstimationConfig,
-) -> (u64, u64, u64) {
-    let in0_shape = input_names.first().and_then(|n| resolve_shape(n, shapes));
-    if op_type == "MaxPool" {
-        let kernel_elems = in0_shape.map_or(4, |s| {
-            if s.len() >= 4 {
-                s[2..].iter().map(|&d| d as u64).product::<u64>().max(1)
-            } else {
-                4
-            }
-        });
-        let queries = out_elems
-            .saturating_mul(kernel_elems.saturating_mul(config.relu_queries_per_element()));
-        let arith = out_elems.saturating_mul(kernel_elems);
-        (out_elems, arith, queries)
-    } else {
-        let pool_size = if op_type == "GlobalAveragePool" {
-            in0_shape.map_or(1, |s| {
-                if s.len() >= 4 {
-                    s[2..].iter().map(|&d| d as u64).product()
-                } else {
-                    1
-                }
-            })
-        } else {
-            in0_shape.map_or(4, |s| {
-                if s.len() >= 4 {
-                    let in_spatial: u64 = s[2..].iter().map(|&d| d as u64).product();
-                    let out_spatial = out_shape.map_or(1, |o| {
-                        if o.len() >= 4 {
-                            o[2..].iter().map(|&d| d as u64).product()
-                        } else {
-                            1
-                        }
-                    });
-                    if out_spatial > 0 {
-                        in_spatial / out_spatial
-                    } else {
-                        in_spatial
-                    }
-                } else {
-                    4
-                }
-            })
-        };
-        let arith = out_elems.saturating_mul(pool_size);
-        let queries = out_elems.saturating_mul(config.rescale_queries_per_element());
-        (out_elems, arith, queries)
-    }
-}
-
-fn estimate_reduce<S: BuildHasher>(
-    op_type: &str,
-    input_names: &[String],
-    shapes: &HashMap<String, Vec<usize>, S>,
-    out_elems: u64,
-    config: &EstimationConfig,
-) -> (u64, u64, u64) {
-    let in0_shape = input_names.first().and_then(|n| resolve_shape(n, shapes));
-    let in_elems = in0_shape.map_or(out_elems, |s| product(s));
-
-    match op_type {
-        "ReduceMax" => {
-            let reduction_factor = if out_elems > 0 {
-                in_elems / out_elems
-            } else {
-                in_elems
-            };
-            let queries = out_elems
-                .saturating_mul(reduction_factor.saturating_mul(config.relu_queries_per_element()));
-            (out_elems, in_elems, queries)
-        }
-        "ReduceMean" => {
-            let queries = out_elems.saturating_mul(config.rescale_queries_per_element());
-            (out_elems, in_elems, queries)
-        }
-        _ => (out_elems, in_elems, 0),
-    }
-}
-
-#[allow(clippy::too_many_lines)]
-fn estimate_single_op<S: BuildHasher>(
-    op_type: &str,
-    input_names: &[String],
-    output_names: &[String],
-    shapes: &HashMap<String, Vec<usize>, S>,
-    config: &EstimationConfig,
-    is_rescale: bool,
-) -> (u64, u64, u64) {
-    let out_shape = output_names.first().and_then(|n| resolve_shape(n, shapes));
-    let out_elems = out_shape.map_or(0, |s| product(s));
-
-    let rescale_queries = if is_rescale {
-        out_elems.saturating_mul(config.rescale_queries_per_element())
-    } else {
-        0
-    };
-
-    match op_type {
-        "MatMul" | "Gemm" => estimate_linear(
-            input_names,
-            output_names,
-            shapes,
-            out_elems,
-            rescale_queries,
-            config,
-        ),
-
-        "Conv" | "ConvTranspose" => estimate_conv(input_names, shapes, out_elems, rescale_queries),
-
-        "ReLU" | "Relu" | "LeakyRelu" | "LeakyReLU" => {
-            estimate_elementwise_activation(out_elems, 1, 1, config)
-        }
-
-        "Sigmoid" | "Tanh" | "Gelu" | "Erf" | "HardSwish" | "Hardswish" => {
-            estimate_elementwise_activation(out_elems, 3, 3, config)
-        }
-
-        "Exp" | "Log" | "Sqrt" | "Pow" | "Sin" | "Cos" => {
-            estimate_elementwise_activation(out_elems, 2, 2, config)
-        }
-
-        "Softmax" => {
-            let lane_size = out_shape.map_or(1, |s| *s.last().unwrap_or(&1) as u64);
-            let n_lanes = if lane_size > 0 {
-                out_elems / lane_size
-            } else {
-                out_elems
-            };
-            let per_lane_arith = lane_size.saturating_mul(4);
-            let per_lane_queries =
-                lane_size.saturating_mul(config.relu_queries_per_element().saturating_mul(3));
-            let arith = n_lanes.saturating_mul(per_lane_arith);
-            let queries = n_lanes.saturating_mul(per_lane_queries);
-            (out_elems, arith, queries)
-        }
-
-        "LayerNormalization"
-        | "InstanceNormalization"
-        | "GroupNormalization"
-        | "BatchNormalization" => {
-            let arith = out_elems.saturating_mul(3);
-            let queries = out_elems.saturating_mul(config.rescale_queries_per_element());
-            (out_elems, arith, queries)
-        }
-
-        "Mul" => (out_elems, out_elems, rescale_queries),
-
-        "Div" => {
-            let queries = out_elems.saturating_mul(config.rescale_queries_per_element());
-            (out_elems, out_elems, queries)
-        }
-
-        "Add" | "Sub" => (out_elems, out_elems, 0),
-
-        "Max" | "Min" | "Clip" => {
-            let queries = out_elems.saturating_mul(config.relu_queries_per_element());
-            (out_elems, out_elems.saturating_mul(2), queries)
-        }
-
-        "Where" => (out_elems, out_elems.saturating_mul(2), 0),
-
-        "MaxPool" | "AveragePool" | "GlobalAveragePool" => {
-            estimate_pool(op_type, input_names, shapes, out_shape, out_elems, config)
-        }
-
-        "ReduceMean" | "ReduceSum" | "ReduceMax" => {
-            estimate_reduce(op_type, input_names, shapes, out_elems, config)
-        }
-
-        "TopK" => {
-            let in0_shape = input_names.first().and_then(|n| resolve_shape(n, shapes));
-            let in_elems = in0_shape.map_or(out_elems, |s| product(s));
-            let queries = in_elems.saturating_mul(config.relu_queries_per_element());
-            (out_elems, in_elems.saturating_mul(2), queries)
-        }
-
-        "Resize" | "GridSample" => {
-            let arith = out_elems.saturating_mul(4);
-            let queries = out_elems.saturating_mul(config.rescale_queries_per_element());
-            (out_elems, arith, queries)
-        }
-
-        _ => (out_elems, 0, 0),
-    }
-}
-
-fn matmul_dims(a_shape: Option<&Vec<usize>>, out_shape: Option<&Vec<usize>>) -> (u64, u64, u64) {
-    let (ell, inner) = a_shape.map_or((1, 1), |s| {
+) -> OpEstimate {
+    let (ell, inner) = ctx.in0().map_or((1, 1), |s| {
         let rank = s.len();
         if rank >= 2 {
             (s[rank - 2] as u64, s[rank - 1] as u64)
@@ -376,19 +215,186 @@ fn matmul_dims(a_shape: Option<&Vec<usize>>, out_shape: Option<&Vec<usize>>) -> 
             (1, 1)
         }
     });
-    let cols = out_shape.map_or(inner, |s| {
-        let rank = s.len();
-        if rank >= 1 { s[rank - 1] as u64 } else { 1 }
-    });
-    (ell, inner, cols)
-}
-
-fn matmul_batch_from_output(out_shape: Option<&Vec<usize>>, ell: u64, cols: u64) -> u64 {
-    out_shape.map_or(1, |s| {
+    let cols = ctx.out0().map_or(inner, last_dim);
+    let batch = ctx.out0().map_or(1, |s| {
         let total = product(s);
         let per_batch = ell.saturating_mul(cols).max(1);
         total / per_batch
-    })
+    });
+    OpEstimate {
+        out_elems,
+        arithmetic: batch.saturating_mul(matmul_cost(ell, inner, cols, config.freivalds_reps)),
+        range_check_queries: rescale_queries,
+    }
+}
+
+fn estimate_conv(ctx: &ShapeCtx<'_>, out_elems: u64, rescale_queries: u64) -> OpEstimate {
+    let kernel_volume = ctx
+        .in1()
+        .map_or(9, |w| if w.len() >= 4 { spatial_product(w) } else { 1 });
+    let channels_per_group = ctx
+        .in1()
+        .map_or(1, |w| if w.len() >= 2 { w[1] as u64 } else { 1 });
+    let inner_dim = kernel_volume.saturating_mul(channels_per_group);
+    OpEstimate {
+        out_elems,
+        arithmetic: out_elems.saturating_mul(inner_dim.saturating_mul(2).saturating_sub(1)),
+        range_check_queries: rescale_queries,
+    }
+}
+
+fn estimate_pool(
+    op_type: &str,
+    ctx: &ShapeCtx<'_>,
+    out_elems: u64,
+    config: &EstimationConfig,
+) -> OpEstimate {
+    if op_type == "MaxPool" {
+        let kernel_elems = ctx.in0().map_or(4, |s| spatial_product(s).max(1));
+        return OpEstimate::elementwise(
+            out_elems,
+            kernel_elems,
+            QueryKind::Relu(kernel_elems),
+            config,
+        );
+    }
+    let pool_size = if op_type == "GlobalAveragePool" {
+        ctx.in0().map_or(1, spatial_product)
+    } else {
+        let in_spatial = ctx.in0().map_or(4, spatial_product);
+        let out_spatial = ctx.out0().map_or(1, spatial_product).max(1);
+        in_spatial / out_spatial
+    };
+    OpEstimate::elementwise(out_elems, pool_size, QueryKind::Rescale, config)
+}
+
+fn estimate_reduce(
+    op_type: &str,
+    ctx: &ShapeCtx<'_>,
+    out_elems: u64,
+    config: &EstimationConfig,
+) -> OpEstimate {
+    let in_elems = ctx.in0().map_or(out_elems, product);
+    let query_kind = match op_type {
+        "ReduceMax" => {
+            let reduction_factor = if out_elems > 0 {
+                in_elems / out_elems
+            } else {
+                in_elems
+            };
+            QueryKind::Relu(reduction_factor)
+        }
+        "ReduceMean" => QueryKind::Rescale,
+        _ => QueryKind::None,
+    };
+    OpEstimate {
+        out_elems,
+        arithmetic: in_elems,
+        range_check_queries: query_kind.queries_for(out_elems, config),
+    }
+}
+
+fn estimate_softmax(
+    out_elems: u64,
+    out_shape: Option<&[usize]>,
+    config: &EstimationConfig,
+) -> OpEstimate {
+    let lane_size = out_shape.map_or(1, last_dim);
+    let n_lanes = if lane_size > 0 {
+        out_elems / lane_size
+    } else {
+        out_elems
+    };
+    OpEstimate {
+        out_elems,
+        arithmetic: n_lanes.saturating_mul(lane_size.saturating_mul(4)),
+        range_check_queries: n_lanes.saturating_mul(
+            lane_size.saturating_mul(config.relu_queries_per_element().saturating_mul(3)),
+        ),
+    }
+}
+
+fn estimate_single_op(
+    op_type: &str,
+    ctx: &ShapeCtx<'_>,
+    config: &EstimationConfig,
+    is_rescale: bool,
+) -> OpEstimate {
+    let out_elems = ctx.out_elems();
+    let rescale_queries = if is_rescale {
+        out_elems.saturating_mul(config.rescale_queries_per_element())
+    } else {
+        0
+    };
+
+    match op_type {
+        "MatMul" | "Gemm" => estimate_linear(ctx, out_elems, rescale_queries, config),
+
+        "Conv" | "ConvTranspose" => estimate_conv(ctx, out_elems, rescale_queries),
+
+        "Softmax" => estimate_softmax(out_elems, ctx.out0(), config),
+
+        "MaxPool" | "AveragePool" | "GlobalAveragePool" => {
+            estimate_pool(op_type, ctx, out_elems, config)
+        }
+
+        "ReduceMean" | "ReduceSum" | "ReduceMax" => {
+            estimate_reduce(op_type, ctx, out_elems, config)
+        }
+
+        "TopK" => {
+            let in_elems = ctx.in0().map_or(out_elems, product);
+            OpEstimate::elementwise(out_elems, 2, QueryKind::Relu(1), config)
+                .with_arithmetic(in_elems.saturating_mul(2))
+                .with_queries(in_elems.saturating_mul(config.relu_queries_per_element()))
+        }
+
+        "Resize" | "GridSample" => {
+            OpEstimate::elementwise(out_elems, 4, QueryKind::Rescale, config)
+        }
+
+        "ReLU" | "Relu" | "LeakyRelu" | "LeakyReLU" => {
+            OpEstimate::elementwise(out_elems, 1, QueryKind::Relu(1), config)
+        }
+
+        "Sigmoid" | "Tanh" | "Gelu" | "Erf" | "HardSwish" | "Hardswish" => {
+            OpEstimate::elementwise(out_elems, 3, QueryKind::Relu(3), config)
+        }
+
+        "Exp" | "Log" | "Sqrt" | "Pow" | "Sin" | "Cos" => {
+            OpEstimate::elementwise(out_elems, 2, QueryKind::Relu(2), config)
+        }
+
+        "LayerNormalization"
+        | "InstanceNormalization"
+        | "GroupNormalization"
+        | "BatchNormalization" => OpEstimate::elementwise(out_elems, 3, QueryKind::Rescale, config),
+
+        "Mul" => OpEstimate::elementwise(
+            out_elems,
+            1,
+            QueryKind::RescaleIfEnabled(rescale_queries),
+            config,
+        ),
+        "Div" => OpEstimate::elementwise(out_elems, 1, QueryKind::Rescale, config),
+        "Add" | "Sub" => OpEstimate::elementwise(out_elems, 1, QueryKind::None, config),
+        "Max" | "Min" | "Clip" => OpEstimate::elementwise(out_elems, 2, QueryKind::Relu(1), config),
+        "Where" => OpEstimate::elementwise(out_elems, 2, QueryKind::None, config),
+
+        _ => OpEstimate::zero(out_elems),
+    }
+}
+
+impl OpEstimate {
+    fn with_arithmetic(mut self, arith: u64) -> Self {
+        self.arithmetic = arith;
+        self
+    }
+
+    fn with_queries(mut self, queries: u64) -> Self {
+        self.range_check_queries = queries;
+        self
+    }
 }
 
 #[must_use]
@@ -421,24 +427,34 @@ pub fn estimate_from_layers<S: BuildHasher>(
             .copied()
             .unwrap_or(true);
 
-        let (out_elems, arith, queries) = estimate_single_op(
-            &layer.op_type,
-            &layer.inputs,
-            &layer.outputs,
-            shapes,
-            config,
-            is_rescale,
-        );
+        let in_shapes: Vec<&[usize]> = layer
+            .inputs
+            .iter()
+            .filter_map(|n| shapes.get(n).map(Vec::as_slice))
+            .collect();
+        let out_shapes: Vec<&[usize]> = layer
+            .outputs
+            .iter()
+            .filter_map(|n| shapes.get(n).map(Vec::as_slice))
+            .collect();
 
-        result.total_arithmetic = result.total_arithmetic.saturating_add(arith);
-        result.total_range_queries = result.total_range_queries.saturating_add(queries);
+        let ctx = ShapeCtx {
+            input_shapes: &in_shapes,
+            output_shapes: &out_shapes,
+        };
+        let est = estimate_single_op(&layer.op_type, &ctx, config, is_rescale);
+
+        result.total_arithmetic = result.total_arithmetic.saturating_add(est.arithmetic);
+        result.total_range_queries = result
+            .total_range_queries
+            .saturating_add(est.range_check_queries);
 
         result.layers.push(LayerEstimate {
             name: layer.name.clone(),
             op_type: layer.op_type.clone(),
-            output_elements: out_elems,
-            arithmetic: arith,
-            range_check_queries: queries,
+            output_elements: est.out_elems,
+            arithmetic: est.arithmetic,
+            range_check_queries: est.range_check_queries,
         });
     }
 
@@ -452,29 +468,14 @@ pub fn estimate_op_constraints(
     output_shapes: &[Vec<usize>],
     config: &EstimationConfig,
 ) -> u64 {
-    let mut shapes = HashMap::new();
-    let input_names: Vec<String> = input_shapes
-        .iter()
-        .enumerate()
-        .map(|(i, s)| {
-            let name = format!("__input_{i}");
-            shapes.insert(name.clone(), s.clone());
-            name
-        })
-        .collect();
-    let output_names: Vec<String> = output_shapes
-        .iter()
-        .enumerate()
-        .map(|(i, s)| {
-            let name = format!("__output_{i}");
-            shapes.insert(name.clone(), s.clone());
-            name
-        })
-        .collect();
-
-    let (_, arith, queries) =
-        estimate_single_op(op_type, &input_names, &output_names, &shapes, config, true);
-    arith.saturating_add(queries)
+    let in_refs: Vec<&[usize]> = input_shapes.iter().map(Vec::as_slice).collect();
+    let out_refs: Vec<&[usize]> = output_shapes.iter().map(Vec::as_slice).collect();
+    let ctx = ShapeCtx {
+        input_shapes: &in_refs,
+        output_shapes: &out_refs,
+    };
+    let est = estimate_single_op(op_type, &ctx, config, true);
+    est.arithmetic.saturating_add(est.range_check_queries)
 }
 
 #[cfg(test)]
@@ -603,5 +604,22 @@ mod tests {
         assert_eq!(cost_single, single_arith + single_rescale);
         let batched_rescale = 2u64 * 4 * 16 * config.rescale_queries_per_element();
         assert_eq!(cost_batched, 2 * single_arith + batched_rescale);
+    }
+
+    #[test]
+    fn gemm_transpose_uses_output_cols() {
+        let config = EstimationConfig {
+            freivalds_reps: 0,
+            ..EstimationConfig::bn254_defaults()
+        };
+        let cost = estimate_op_constraints(
+            "Gemm",
+            &[vec![1, 4096], vec![60, 4096]],
+            &[vec![1, 60]],
+            &config,
+        );
+        let expected_arith = 2 * 4096 * 60 - 60;
+        let expected_rescale = 60 * config.rescale_queries_per_element();
+        assert_eq!(cost, expected_arith + expected_rescale);
     }
 }
