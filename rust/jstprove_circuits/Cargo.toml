@@ -88,6 +88,10 @@ harness = false
 name = "parallel_witness"
 harness = false
 
+[[bench]]
+name = "gemm_300_256_memory"
+harness = false
+
 [dependencies.serde]
 version = "1.0"
 features = [ "derive",]
