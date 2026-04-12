@@ -147,10 +147,41 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for LayerNormLayer {
             api.constant(CircuitField::<C>::from_u256(U256::from(lane_size as u64)));
         let mean_tol_bits = (2 * lane_size + 1).next_power_of_two().trailing_zeros() as usize;
 
+        // `per_elem_tolerance_val = scaling + 2 * max|γ_q| + 4`, computed with
+        // checked arithmetic: on overflow or if the value would push
+        // `next_power_of_two` out of range, fail the build rather than
+        // silently saturating into a panic or an unsound bound.
         let per_elem_tolerance_val: u64 = self
-            .scaling
-            .saturating_add(self.max_abs_gamma.saturating_mul(2))
-            .saturating_add(4);
+            .max_abs_gamma
+            .checked_mul(2)
+            .and_then(|v| v.checked_add(self.scaling))
+            .and_then(|v| v.checked_add(4))
+            .ok_or_else(|| LayerError::Other {
+                layer: LayerKind::LayerNormalization,
+                msg: format!(
+                    "per-element tolerance overflow: scaling={}, max_abs_gamma={}",
+                    self.scaling, self.max_abs_gamma
+                ),
+            })?;
+        let per_elem_tol_upper: u64 = per_elem_tolerance_val
+            .checked_mul(2)
+            .and_then(|v| v.checked_add(1))
+            .ok_or_else(|| LayerError::Other {
+                layer: LayerKind::LayerNormalization,
+                msg: format!(
+                    "per-element tolerance bit-width overflow: tol={per_elem_tolerance_val}"
+                ),
+            })?;
+        // `u64::next_power_of_two` panics when the input exceeds `2^63`.
+        if per_elem_tol_upper > (1u64 << 63) {
+            return Err(LayerError::Other {
+                layer: LayerKind::LayerNormalization,
+                msg: format!(
+                    "per-element tolerance bit-width exceeds 63 bits: tol={per_elem_tolerance_val}"
+                ),
+            }
+            .into());
+        }
         let per_elem_tolerance = api.constant(CircuitField::<C>::from_u256(U256::from(
             per_elem_tolerance_val,
         )));
@@ -159,9 +190,8 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for LayerNormLayer {
         // `shifted < 2^b`, leaving the effective upper bound on the signed
         // residual as `2^b - 1 - tol` rather than `tol`. Mirror each such check
         // with `range_check(tol - diff, b)` to tighten both sides to |diff| ≤ tol.
-        let per_elem_tol_bits: usize = (per_elem_tolerance_val.saturating_mul(2).saturating_add(1))
-            .next_power_of_two()
-            .trailing_zeros() as usize;
+        let per_elem_tol_bits: usize =
+            per_elem_tol_upper.next_power_of_two().trailing_zeros() as usize;
 
         let norm_div_shift_exponent: usize = 2usize
             .saturating_mul(n_bits)
