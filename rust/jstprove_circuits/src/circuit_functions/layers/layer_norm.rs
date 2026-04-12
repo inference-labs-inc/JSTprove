@@ -7,7 +7,10 @@ use expander_compiler::frontend::{CircuitField, Config, FieldArith, RootAPI, Var
 
 use crate::circuit_functions::{
     CircuitError,
-    gadgets::{LogupRangeCheckContext, i64_to_field},
+    gadgets::{
+        LogupRangeCheckContext, euclidean_division::div_pos_integer_pow2_constant_inner,
+        i64_to_field,
+    },
     hints::layer_norm_verified::LAYER_NORM_VERIFIED_HINT_KEY,
     layers::{LayerError, LayerKind, layer_ops::LayerOp},
     utils::{
@@ -41,6 +44,7 @@ pub struct LayerNormLayer {
     n_bits: usize,
     gamma: Vec<i64>,
     beta: Vec<i64>,
+    max_abs_gamma: u64,
 }
 
 impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for LayerNormLayer {
@@ -143,8 +147,69 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for LayerNormLayer {
             api.constant(CircuitField::<C>::from_u256(U256::from(lane_size as u64)));
         let mean_tol_bits = (2 * lane_size + 1).next_power_of_two().trailing_zeros() as usize;
 
-        let per_elem_tolerance = api.constant(CircuitField::<C>::from_u256(U256::from(3u64)));
-        let per_elem_tol_bits: usize = 3;
+        // `per_elem_tolerance_val = scaling + 2 * max|γ_q| + 4`, computed with
+        // checked arithmetic: on overflow or if the value would push
+        // `next_power_of_two` out of range, fail the build rather than
+        // silently saturating into a panic or an unsound bound.
+        let per_elem_tolerance_val: u64 = self
+            .max_abs_gamma
+            .checked_mul(2)
+            .and_then(|v| v.checked_add(self.scaling))
+            .and_then(|v| v.checked_add(4))
+            .ok_or_else(|| LayerError::Other {
+                layer: LayerKind::LayerNormalization,
+                msg: format!(
+                    "per-element tolerance overflow: scaling={}, max_abs_gamma={}",
+                    self.scaling, self.max_abs_gamma
+                ),
+            })?;
+        let per_elem_tol_upper: u64 = per_elem_tolerance_val
+            .checked_mul(2)
+            .and_then(|v| v.checked_add(1))
+            .ok_or_else(|| LayerError::Other {
+                layer: LayerKind::LayerNormalization,
+                msg: format!(
+                    "per-element tolerance bit-width overflow: tol={per_elem_tolerance_val}"
+                ),
+            })?;
+        // `u64::next_power_of_two` panics when the input exceeds `2^63`.
+        if per_elem_tol_upper > (1u64 << 63) {
+            return Err(LayerError::Other {
+                layer: LayerKind::LayerNormalization,
+                msg: format!(
+                    "per-element tolerance bit-width exceeds 63 bits: tol={per_elem_tolerance_val}"
+                ),
+            }
+            .into());
+        }
+        let per_elem_tolerance = api.constant(CircuitField::<C>::from_u256(U256::from(
+            per_elem_tolerance_val,
+        )));
+        // Range-check bit widths computed via `next_power_of_two` round up to a
+        // power-of-two width `b`, so `range_check(shifted, b)` only enforces
+        // `shifted < 2^b`, leaving the effective upper bound on the signed
+        // residual as `2^b - 1 - tol` rather than `tol`. Mirror each such check
+        // with `range_check(tol - diff, b)` to tighten both sides to |diff| ≤ tol.
+        let per_elem_tol_bits: usize =
+            per_elem_tol_upper.next_power_of_two().trailing_zeros() as usize;
+
+        let norm_div_shift_exponent: usize = 2usize
+            .saturating_mul(n_bits)
+            .saturating_add(1)
+            .max(self.scale_exponent as usize + 1);
+        let norm_div_shift_over_scale_exponent: usize =
+            norm_div_shift_exponent - self.scale_exponent as usize;
+        let norm_div_shift_u256 = U256::ONE << (norm_div_shift_exponent as u32);
+        let norm_div_shift_const = api.constant(CircuitField::<C>::from_u256(norm_div_shift_u256));
+        let norm_div_shift_over_scale_u256 =
+            U256::ONE << (norm_div_shift_over_scale_exponent as u32);
+        let norm_div_shift_over_scale_const =
+            api.constant(CircuitField::<C>::from_u256(norm_div_shift_over_scale_u256));
+
+        let mean_signed_offset_u256 = U256::ONE << (n_bits as u32);
+        let mean_signed_offset_const =
+            api.constant(CircuitField::<C>::from_u256(mean_signed_offset_u256));
+        let mean_abs_bits: usize = n_bits + 1;
 
         let outer_size: usize = shape[..axis].iter().product();
         let flat_input: Vec<Variable> = x_input
@@ -183,6 +248,9 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for LayerNormLayer {
             let mean_shifted = api.add(mean_diff, mean_tolerance);
             logup_ctx.range_check::<C, Builder>(api, mean_shifted, mean_tol_bits)?;
 
+            let mean_abs_shifted = api.add(mean_q, mean_signed_offset_const);
+            logup_ctx.range_check::<C, Builder>(api, mean_abs_shifted, mean_abs_bits)?;
+
             let mut norm_sq_sum = zero_var;
 
             for (i, &y) in y_vars.iter().enumerate() {
@@ -192,12 +260,23 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for LayerNormLayer {
                 let dev = api.sub(flat_input[start + i], mean_q);
                 let norm_unscaled = api.mul(dev, inv_std_q);
 
-                let norm_q = api.unconstrained_int_div(norm_unscaled, scale_var);
-                let norm_rem = api.unconstrained_mod(norm_unscaled, scale_var);
-                let recon = api.mul(norm_q, scale_var);
-                let recon = api.add(recon, norm_rem);
-                api.assert_is_equal(recon, norm_unscaled);
-                logup_ctx.range_check::<C, Builder>(api, norm_rem, self.scale_exponent as usize)?;
+                // `norm_unscaled` is a signed integer that can be negative; the
+                // unconstrained U256 IntDiv used inside the gadget requires a
+                // non-negative dividend in signed interpretation. Delegate to
+                // the shared Euclidean-division gadget, which adds the
+                // positive shift before dividing and returns the signed
+                // quotient.
+                let norm_q = div_pos_integer_pow2_constant_inner::<C, Builder>(
+                    api,
+                    logup_ctx,
+                    norm_unscaled,
+                    scale_var,
+                    norm_div_shift_const,
+                    self.scale_exponent as usize,
+                    norm_div_shift_over_scale_exponent,
+                    norm_div_shift_over_scale_const,
+                    true,
+                )?;
 
                 let norm_shifted = api.add(norm_q, norm_offset);
                 logup_ctx.range_check::<C, Builder>(api, norm_shifted, max_norm_bits + 1)?;
@@ -211,6 +290,8 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for LayerNormLayer {
                 let elem_diff = api.sub(lhs, rhs);
                 let elem_shifted = api.add(elem_diff, per_elem_tolerance);
                 logup_ctx.range_check::<C, Builder>(api, elem_shifted, per_elem_tol_bits)?;
+                let elem_mirrored = api.sub(per_elem_tolerance, elem_diff);
+                logup_ctx.range_check::<C, Builder>(api, elem_mirrored, per_elem_tol_bits)?;
             }
 
             let var_diff = api.sub(norm_sq_sum, n_alpha_sq);
@@ -350,6 +431,8 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for LayerNormLayer {
 
         let n_bits = layer_context.n_bits_for(&layer.name);
 
+        let max_abs_gamma: u64 = gamma.iter().map(|g| g.unsigned_abs()).max().unwrap_or(0);
+
         Ok(Box::new(Self {
             inputs: layer.inputs.clone(),
             outputs: layer.outputs.clone(),
@@ -359,6 +442,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for LayerNormLayer {
             n_bits,
             gamma,
             beta,
+            max_abs_gamma,
         }))
     }
 }
