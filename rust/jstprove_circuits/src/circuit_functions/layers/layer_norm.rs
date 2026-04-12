@@ -7,7 +7,10 @@ use expander_compiler::frontend::{CircuitField, Config, FieldArith, RootAPI, Var
 
 use crate::circuit_functions::{
     CircuitError,
-    gadgets::{LogupRangeCheckContext, i64_to_field},
+    gadgets::{
+        LogupRangeCheckContext, euclidean_division::div_pos_integer_pow2_constant_inner,
+        i64_to_field,
+    },
     hints::layer_norm_verified::LAYER_NORM_VERIFIED_HINT_KEY,
     layers::{LayerError, LayerKind, layer_ops::LayerOp},
     utils::{
@@ -151,6 +154,11 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for LayerNormLayer {
         let per_elem_tolerance = api.constant(CircuitField::<C>::from_u256(U256::from(
             per_elem_tolerance_val,
         )));
+        // Range-check bit widths computed via `next_power_of_two` round up to a
+        // power-of-two width `b`, so `range_check(shifted, b)` only enforces
+        // `shifted < 2^b`, leaving the effective upper bound on the signed
+        // residual as `2^b - 1 - tol` rather than `tol`. Mirror each such check
+        // with `range_check(tol - diff, b)` to tighten both sides to |diff| ≤ tol.
         let per_elem_tol_bits: usize = (per_elem_tolerance_val.saturating_mul(2).saturating_add(1))
             .next_power_of_two()
             .trailing_zeros() as usize;
@@ -159,14 +167,14 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for LayerNormLayer {
             .saturating_mul(n_bits)
             .saturating_add(1)
             .max(self.scale_exponent as usize + 1);
+        let norm_div_shift_over_scale_exponent: usize =
+            norm_div_shift_exponent - self.scale_exponent as usize;
         let norm_div_shift_u256 = U256::ONE << (norm_div_shift_exponent as u32);
         let norm_div_shift_const = api.constant(CircuitField::<C>::from_u256(norm_div_shift_u256));
         let norm_div_shift_over_scale_u256 =
-            U256::ONE << ((norm_div_shift_exponent - self.scale_exponent as usize) as u32);
+            U256::ONE << (norm_div_shift_over_scale_exponent as u32);
         let norm_div_shift_over_scale_const =
             api.constant(CircuitField::<C>::from_u256(norm_div_shift_over_scale_u256));
-        let norm_div_quotient_bits: usize =
-            norm_div_shift_exponent - self.scale_exponent as usize + 1;
 
         let mean_signed_offset_u256 = U256::ONE << (n_bits as u32);
         let mean_signed_offset_const =
@@ -222,22 +230,23 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for LayerNormLayer {
                 let dev = api.sub(flat_input[start + i], mean_q);
                 let norm_unscaled = api.mul(dev, inv_std_q);
 
-                // `norm_unscaled` is a signed integer that can be negative. In
-                // this field, negative values are represented as `p - |v|`, and
-                // the unconstrained U256 division used below operates on the
-                // raw U256 representation — not signed Euclidean division.
-                // Shift by a known-positive constant so the dividend is
-                // guaranteed non-negative in signed interpretation, then
-                // subtract the shift back from the quotient.
-                let shifted_dividend = api.add(norm_unscaled, norm_div_shift_const);
-                let shifted_q = api.unconstrained_int_div(shifted_dividend, scale_var);
-                let norm_rem = api.unconstrained_mod(shifted_dividend, scale_var);
-                let recon = api.mul(shifted_q, scale_var);
-                let recon = api.add(recon, norm_rem);
-                api.assert_is_equal(recon, shifted_dividend);
-                logup_ctx.range_check::<C, Builder>(api, norm_rem, self.scale_exponent as usize)?;
-                logup_ctx.range_check::<C, Builder>(api, shifted_q, norm_div_quotient_bits)?;
-                let norm_q = api.sub(shifted_q, norm_div_shift_over_scale_const);
+                // `norm_unscaled` is a signed integer that can be negative; the
+                // unconstrained U256 IntDiv used inside the gadget requires a
+                // non-negative dividend in signed interpretation. Delegate to
+                // the shared Euclidean-division gadget, which adds the
+                // positive shift before dividing and returns the signed
+                // quotient.
+                let norm_q = div_pos_integer_pow2_constant_inner::<C, Builder>(
+                    api,
+                    logup_ctx,
+                    norm_unscaled,
+                    scale_var,
+                    norm_div_shift_const,
+                    self.scale_exponent as usize,
+                    norm_div_shift_over_scale_exponent,
+                    norm_div_shift_over_scale_const,
+                    true,
+                )?;
 
                 let norm_shifted = api.add(norm_q, norm_offset);
                 logup_ctx.range_check::<C, Builder>(api, norm_shifted, max_norm_bits + 1)?;
@@ -251,6 +260,8 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for LayerNormLayer {
                 let elem_diff = api.sub(lhs, rhs);
                 let elem_shifted = api.add(elem_diff, per_elem_tolerance);
                 logup_ctx.range_check::<C, Builder>(api, elem_shifted, per_elem_tol_bits)?;
+                let elem_mirrored = api.sub(per_elem_tolerance, elem_diff);
+                logup_ctx.range_check::<C, Builder>(api, elem_mirrored, per_elem_tol_bits)?;
             }
 
             let var_diff = api.sub(norm_sq_sum, n_alpha_sq);
