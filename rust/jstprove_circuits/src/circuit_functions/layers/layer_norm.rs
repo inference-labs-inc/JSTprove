@@ -41,6 +41,7 @@ pub struct LayerNormLayer {
     n_bits: usize,
     gamma: Vec<i64>,
     beta: Vec<i64>,
+    max_abs_gamma: u64,
 }
 
 impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for LayerNormLayer {
@@ -143,8 +144,34 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for LayerNormLayer {
             api.constant(CircuitField::<C>::from_u256(U256::from(lane_size as u64)));
         let mean_tol_bits = (2 * lane_size + 1).next_power_of_two().trailing_zeros() as usize;
 
-        let per_elem_tolerance = api.constant(CircuitField::<C>::from_u256(U256::from(3u64)));
-        let per_elem_tol_bits: usize = 3;
+        let per_elem_tolerance_val: u64 = self
+            .scaling
+            .saturating_add(self.max_abs_gamma.saturating_mul(2))
+            .saturating_add(4);
+        let per_elem_tolerance = api.constant(CircuitField::<C>::from_u256(U256::from(
+            per_elem_tolerance_val,
+        )));
+        let per_elem_tol_bits: usize = (per_elem_tolerance_val.saturating_mul(2).saturating_add(1))
+            .next_power_of_two()
+            .trailing_zeros() as usize;
+
+        let norm_div_shift_exponent: usize = 2usize
+            .saturating_mul(n_bits)
+            .saturating_add(1)
+            .max(self.scale_exponent as usize + 1);
+        let norm_div_shift_u256 = U256::ONE << (norm_div_shift_exponent as u32);
+        let norm_div_shift_const = api.constant(CircuitField::<C>::from_u256(norm_div_shift_u256));
+        let norm_div_shift_over_scale_u256 =
+            U256::ONE << ((norm_div_shift_exponent - self.scale_exponent as usize) as u32);
+        let norm_div_shift_over_scale_const =
+            api.constant(CircuitField::<C>::from_u256(norm_div_shift_over_scale_u256));
+        let norm_div_quotient_bits: usize =
+            norm_div_shift_exponent - self.scale_exponent as usize + 1;
+
+        let mean_signed_offset_u256 = U256::ONE << (n_bits as u32);
+        let mean_signed_offset_const =
+            api.constant(CircuitField::<C>::from_u256(mean_signed_offset_u256));
+        let mean_abs_bits: usize = n_bits + 1;
 
         let outer_size: usize = shape[..axis].iter().product();
         let flat_input: Vec<Variable> = x_input
@@ -183,6 +210,9 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for LayerNormLayer {
             let mean_shifted = api.add(mean_diff, mean_tolerance);
             logup_ctx.range_check::<C, Builder>(api, mean_shifted, mean_tol_bits)?;
 
+            let mean_abs_shifted = api.add(mean_q, mean_signed_offset_const);
+            logup_ctx.range_check::<C, Builder>(api, mean_abs_shifted, mean_abs_bits)?;
+
             let mut norm_sq_sum = zero_var;
 
             for (i, &y) in y_vars.iter().enumerate() {
@@ -192,12 +222,22 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for LayerNormLayer {
                 let dev = api.sub(flat_input[start + i], mean_q);
                 let norm_unscaled = api.mul(dev, inv_std_q);
 
-                let norm_q = api.unconstrained_int_div(norm_unscaled, scale_var);
-                let norm_rem = api.unconstrained_mod(norm_unscaled, scale_var);
-                let recon = api.mul(norm_q, scale_var);
+                // `norm_unscaled` is a signed integer that can be negative. In
+                // this field, negative values are represented as `p - |v|`, and
+                // the unconstrained U256 division used below operates on the
+                // raw U256 representation — not signed Euclidean division.
+                // Shift by a known-positive constant so the dividend is
+                // guaranteed non-negative in signed interpretation, then
+                // subtract the shift back from the quotient.
+                let shifted_dividend = api.add(norm_unscaled, norm_div_shift_const);
+                let shifted_q = api.unconstrained_int_div(shifted_dividend, scale_var);
+                let norm_rem = api.unconstrained_mod(shifted_dividend, scale_var);
+                let recon = api.mul(shifted_q, scale_var);
                 let recon = api.add(recon, norm_rem);
-                api.assert_is_equal(recon, norm_unscaled);
+                api.assert_is_equal(recon, shifted_dividend);
                 logup_ctx.range_check::<C, Builder>(api, norm_rem, self.scale_exponent as usize)?;
+                logup_ctx.range_check::<C, Builder>(api, shifted_q, norm_div_quotient_bits)?;
+                let norm_q = api.sub(shifted_q, norm_div_shift_over_scale_const);
 
                 let norm_shifted = api.add(norm_q, norm_offset);
                 logup_ctx.range_check::<C, Builder>(api, norm_shifted, max_norm_bits + 1)?;
@@ -350,6 +390,8 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for LayerNormLayer {
 
         let n_bits = layer_context.n_bits_for(&layer.name);
 
+        let max_abs_gamma: u64 = gamma.iter().map(|g| g.unsigned_abs()).max().unwrap_or(0);
+
         Ok(Box::new(Self {
             inputs: layer.inputs.clone(),
             outputs: layer.outputs.clone(),
@@ -359,6 +401,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for LayerNormLayer {
             n_bits,
             gamma,
             beta,
+            max_abs_gamma,
         }))
     }
 }
