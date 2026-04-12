@@ -75,10 +75,10 @@ fn main() {
 
     let tmp = tempfile::TempDir::new().expect("tempdir");
     let circuit_path = tmp.path().join("circuit.bundle");
-    let circuit_path_str = circuit_path.to_str().unwrap();
+    let circuit_path_str = circuit_path.to_string_lossy().into_owned();
 
     let t0 = Instant::now();
-    let result = compile_goldilocks_whir_pq(circuit_path_str, false, Some(params));
+    let result = compile_goldilocks_whir_pq(&circuit_path_str, false, Some(params));
     let elapsed_ms = t0.elapsed().as_secs_f64() * 1000.0;
 
     match result {
@@ -86,7 +86,10 @@ fn main() {
             println!("compile OK in {}", fmt_ms(elapsed_ms));
         }
         Err(e) => {
-            println!("compile FAILED in {}: {e:?}", fmt_ms(elapsed_ms));
+            panic!(
+                "compile FAILED in {elapsed}: {e:?}",
+                elapsed = fmt_ms(elapsed_ms),
+            );
         }
     }
 }
