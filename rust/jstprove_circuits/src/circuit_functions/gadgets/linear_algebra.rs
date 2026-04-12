@@ -17,12 +17,14 @@
 //! For convenience these functions report failures via `LayerError` / `LayerKind`.
 
 /// External crate imports
+use ethnum::U256;
 use ndarray::{Array2, ArrayD, Ix2, IxDyn};
 
 /// `ExpanderCompilerCollection` imports
-use expander_compiler::frontend::{Config, RootAPI, Variable};
+use expander_compiler::frontend::{CircuitField, Config, FieldArith, RootAPI, Variable};
 
 /// Internal crate imports
+use crate::circuit_functions::hints::matmul::MATMUL_HINT_KEY;
 use crate::circuit_functions::layers::{LayerError, LayerKind};
 
 // -----------------------------------------------------------------------------
@@ -305,6 +307,10 @@ pub fn matrix_multiplication<C: Config, Builder: RootAPI<C>>(
 /// # Errors
 /// Returns `LayerError` if the input shapes are incompatible or cannot be interpreted
 /// as the required dimensionality for the operation.
+/// # Panics
+/// Panics if a matrix dimension does not fit in `u64`; this only occurs
+/// on 128-bit `usize` targets with pathologically large dimensions and
+/// is not reachable on any currently supported platform.
 pub fn unconstrained_matrix_multiplication<C: Config, Builder: RootAPI<C>>(
     api: &mut Builder,
     matrix_a: ArrayD<Variable>,
@@ -335,16 +341,45 @@ pub fn unconstrained_matrix_multiplication<C: Config, Builder: RootAPI<C>>(
         });
     }
 
-    let mut result = Array2::default((dim_m, dim_p));
+    // Use a single hint call to compute C = A * B outside the circuit.
+    //
+    // The previous implementation called `api.unconstrained_mul` and
+    // `api.unconstrained_add` inside a triple-nested loop. Each of those
+    // wrappers emits a constrained `Mul`/`Add` instruction and an
+    // `UnconstrainedIdentity` wrapper (see
+    // `expander_compiler::frontend::builder`), so the "unconstrained"
+    // matmul actually allocated O(ell * m * n) Variables plus roughly
+    // the same number of Instructions in the builder. On a typical
+    // transformer output projection [300, 256] @ [256, 256] that is
+    // ~80M Variables, several hundred GB of compiler bookkeeping at
+    // build time.
+    //
+    // A single `new_hint(MATMUL_HINT_KEY, flatten(A) ++ flatten(B) ++
+    // [m, n, p], m * p)` emits exactly one instruction and `m * p`
+    // output Variables. Callers must still constrain C to A and B via
+    // `freivalds_verify_matrix_product` or equivalent.
+    let mut inputs: Vec<Variable> = Vec::with_capacity(dim_m * dim_n + dim_n * dim_p + 3);
+    for i in 0..dim_m {
+        for k in 0..dim_n {
+            inputs.push(a[(i, k)]);
+        }
+    }
+    for k in 0..dim_n {
+        for j in 0..dim_p {
+            inputs.push(b[(k, j)]);
+        }
+    }
+    for &d in &[dim_m, dim_n, dim_p] {
+        let v = u64::try_from(d).expect("matrix dimension does not fit in u64");
+        inputs.push(api.constant(CircuitField::<C>::from_u256(U256::from(v))));
+    }
 
+    let hint_outputs = api.new_hint(MATMUL_HINT_KEY, &inputs, dim_m * dim_p);
+
+    let mut result = Array2::default((dim_m, dim_p));
     for i in 0..dim_m {
         for j in 0..dim_p {
-            let mut acc = api.constant(0);
-            for k in 0..dim_n {
-                let mul = api.unconstrained_mul(a[(i, k)], b[(k, j)]);
-                acc = api.unconstrained_add(acc, mul);
-            }
-            result[(i, j)] = acc;
+            result[(i, j)] = hint_outputs[i * dim_p + j];
         }
     }
 

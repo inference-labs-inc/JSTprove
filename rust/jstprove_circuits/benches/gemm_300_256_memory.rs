@@ -4,30 +4,21 @@
 //!
 //!   Gemm(A=[300, 256], B=[256, 256], C=[256]) -> Reshape -> Transpose -> [1, 300, 256]
 //!
-//! Under goldilocks_ext4_whir compilation on a 512 GB Mac Studio, this
-//! slice consumes > 380 GB of compressed memory before macOS Jetsam
-//! kills the process. This bench isolates the shape so before/after
-//! measurements are reproducible.
+//! Under goldilocks_ext4_whir compilation this slice consumed >380 GB of
+//! compressed memory on a 512 GB Mac Studio before macOS Jetsam killed
+//! the process. This bench isolates the shape so before/after
+//! measurements on the unconstrained-matmul witness allocation path are
+//! reproducible.
 //!
 //! Run with:
 //!
-//!   cargo bench --bench gemm_300_256_memory --features peak-mem
+//!   cargo bench --bench gemm_300_256_memory
 //!
-//! peak-mem wires peakmem-alloc as the global allocator and exposes
-//! `GLOBAL.reset_peak_memory()` + `get_peak_memory()` on the compile
-//! window. Without the feature the bench still reports wall time.
+//! Reports wall time. For peak-RSS numbers, wrap the invocation with
+//! `/usr/bin/time -l` on macOS or `/usr/bin/time -v` on Linux.
 
 use std::path::Path;
 use std::time::Instant;
-
-#[cfg(feature = "peak-mem")]
-use peakmem_alloc::{INSTRUMENTED_SYSTEM, PeakMemAlloc, PeakMemAllocTrait};
-#[cfg(feature = "peak-mem")]
-use std::alloc::System;
-
-#[cfg(feature = "peak-mem")]
-#[global_allocator]
-static GLOBAL: &PeakMemAlloc<System> = &INSTRUMENTED_SYSTEM;
 
 use jstprove_circuits::expander_metadata;
 use jstprove_circuits::io::io_reader::onnx_context::OnnxContext;
@@ -41,11 +32,6 @@ fn fmt_ms(ms: f64) -> String {
     } else {
         format!("{ms:.1}ms")
     }
-}
-
-#[cfg(feature = "peak-mem")]
-fn fmt_mb(bytes: usize) -> String {
-    format!("{:.1} MB", bytes as f64 / (1024.0 * 1024.0))
 }
 
 fn main() {
@@ -91,15 +77,9 @@ fn main() {
     let circuit_path = tmp.path().join("circuit.bundle");
     let circuit_path_str = circuit_path.to_str().unwrap();
 
-    #[cfg(feature = "peak-mem")]
-    GLOBAL.reset_peak_memory();
-
     let t0 = Instant::now();
     let result = compile_goldilocks_whir_pq(circuit_path_str, false, Some(params));
     let elapsed_ms = t0.elapsed().as_secs_f64() * 1000.0;
-
-    #[cfg(feature = "peak-mem")]
-    let peak = GLOBAL.get_peak_memory();
 
     match result {
         Ok(()) => {
@@ -109,13 +89,4 @@ fn main() {
             println!("compile FAILED in {}: {e:?}", fmt_ms(elapsed_ms));
         }
     }
-
-    #[cfg(feature = "peak-mem")]
-    println!("peak compile-time memory: {}", fmt_mb(peak));
-
-    #[cfg(not(feature = "peak-mem"))]
-    println!(
-        "(build with `--features peak-mem` to get peak memory numbers; \
-         this run only reports wall time)"
-    );
 }
