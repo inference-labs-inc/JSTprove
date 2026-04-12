@@ -3,6 +3,7 @@
 pub mod build_layers;
 pub mod constants;
 mod errors;
+pub mod estimate;
 pub mod graph_pattern_matching;
 pub mod onnx_model; // ONNX layer param extraction and model shape helpers
 pub mod onnx_types; //
