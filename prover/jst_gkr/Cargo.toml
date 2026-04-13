@@ -1,0 +1,35 @@
+[package]
+name = "jst_gkr"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+arith.workspace = true
+jst_gkr_engine.workspace = true
+sha2.workspace = true
+rand.workspace = true
+
+[dev-dependencies]
+rand_chacha.workspace = true
+goldilocks.workspace = true
+criterion.workspace = true
+ark-std.workspace = true
+circuit.workspace = true
+config_macros.workspace = true
+gkr.workspace = true
+gkr_engine.workspace = true
+poly_commit.workspace = true
+transcript.workspace = true
+gkr_hashers.workspace = true
+env_logger.workspace = true
+
+[[bench]]
+name = "gkr_bench"
+harness = false
+
+[[bench]]
+name = "comparison"
+harness = false
+
+[lints.clippy]
+module_name_repetitions = "allow"

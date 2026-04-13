@@ -23,6 +23,8 @@ members = [
     "prover/tree",
     "prover/utils",
     "prover/metal_accel",
+    "prover/jst_gkr_engine",
+    "prover/jst_gkr",
     "compiler/expander_compiler",
     "compiler/expander_compiler/macros",
     "compiler/circuit-std-rs",
@@ -57,6 +59,8 @@ serdes_derive = { path = "prover/serdes_derive" }
 sumcheck = { path = "prover/sumcheck" }
 metal_accel = { path = "prover/metal_accel" }
 tree = { path = "prover/tree" }
+jst_gkr_engine = { path = "prover/jst_gkr_engine" }
+jst_gkr = { path = "prover/jst_gkr" }
 
 # dual aliases: original names for prover crates, aliased names for compiler crates
 circuit = { path = "prover/circuit" }
