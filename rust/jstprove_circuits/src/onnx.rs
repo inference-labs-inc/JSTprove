@@ -404,6 +404,147 @@ fn quantize_f64_to_field<C: Config>(val: f64, scale: f64) -> CircuitField<C> {
     convert_val_to_field_element::<C>(truncated)
 }
 
+/// ONNX TensorProto element types whose values carry indices,
+/// counts, or predicates and must enter the circuit at unit scale.
+/// Quantising them by alpha would feed e.g. an INT64 index of 1054
+/// into a gather as 1054 * 2^scale_exponent and trip every
+/// downstream bounds / mux / range check.
+///
+/// Codes follow the ONNX TensorProto.DataType enumeration:
+/// UINT8=2, INT8=3, UINT16=4, INT16=5, INT32=6, INT64=7, BOOL=9,
+/// UINT32=12, UINT64=13.
+fn is_integer_elem_type(t: i16) -> bool {
+    matches!(t, 2 | 3 | 4 | 5 | 6 | 7 | 9 | 12 | 13)
+}
+
+/// Convert an integer-typed wire value (passed as f64 by the
+/// host-side serialisation) into the i64 the circuit expects,
+/// rejecting the silently-corrupting cases up front:
+///   * non-finite values (NaN / inf cast to 0 / i64::MAX),
+///   * non-integral values (e.g. 0.5 silently truncating to 0),
+///   * values outside the f64-exact integer range
+///     (|v| > 2^53 cannot be uniquely round-tripped).
+/// Returning a `RunError` instead of panicking keeps the prover
+/// in a recoverable state and surfaces upstream slicer bugs at
+/// the boundary instead of after they have produced a witness for
+/// an unintended computation.
+fn f64_index_to_i64(v: f64) -> Result<i64, RunError> {
+    if !v.is_finite() {
+        return Err(RunError::Witness(format!(
+            "integer-typed input value is not finite: {v}"
+        )));
+    }
+    // Bit-pattern compare on f64 is exact; any rounding would
+    // change at least one mantissa bit, so this catches every
+    // non-integral wire value the slicer may have emitted.
+    if v.round().to_bits() != v.to_bits() {
+        return Err(RunError::Witness(format!(
+            "integer-typed input value is not integral: {v}"
+        )));
+    }
+    #[allow(clippy::cast_precision_loss)]
+    let max_exact = (1u64 << 53) as f64;
+    if v.abs() > max_exact {
+        return Err(RunError::Witness(format!(
+            "integer-typed input value exceeds f64-exact range (|v| > 2^53): {v}"
+        )));
+    }
+    #[allow(clippy::cast_possible_truncation)]
+    Ok(v.round() as i64)
+}
+
+/// Encode the activation portion of a circuit's input array,
+/// dispatching per-input on the manifest element type so integer
+/// indices/counts/booleans bypass alpha quantisation.  Used by
+/// both witness_from_f64_generic and build_debug_assignment so the
+/// production and debug paths agree on the encoding.
+fn push_activation_inputs<C: Config>(
+    inputs: &[crate::circuit_functions::utils::onnx_types::ONNXIO],
+    activations: &[f64],
+    alpha: f64,
+    out: &mut Vec<CircuitField<C>>,
+) -> Result<(), RunError> {
+    let mut offset = 0usize;
+    for io in inputs {
+        let elems: usize = io.shape.iter().product();
+        let end = offset + elems;
+        if is_integer_elem_type(io.elem_type) {
+            for &v in &activations[offset..end] {
+                out.push(convert_val_to_field_element::<C>(f64_index_to_i64(v)?));
+            }
+        } else {
+            for &v in &activations[offset..end] {
+                out.push(quantize_f64_to_field::<C>(v, alpha));
+            }
+        }
+        offset = end;
+    }
+    Ok(())
+}
+
+/// Find the index in `inputs` at which the cumulative shape
+/// product equals `activation_elements`.  Used in the debug path
+/// where activations and initialisers travel via different
+/// channels: the user's input array is exactly the activation
+/// portion of the manifest, and everything after the boundary is
+/// loaded by the witness solver from the bundle.
+fn activation_input_split(
+    inputs: &[crate::circuit_functions::utils::onnx_types::ONNXIO],
+    activation_elements: usize,
+) -> Result<usize, RunError> {
+    let mut covered = 0usize;
+    for (i, io) in inputs.iter().enumerate() {
+        if covered == activation_elements {
+            return Ok(i);
+        }
+        let elems: usize = io.shape.iter().product();
+        covered = covered
+            .checked_add(elems)
+            .ok_or_else(|| RunError::Witness("input shape product overflowed usize".into()))?;
+        if covered > activation_elements {
+            return Err(RunError::Witness(format!(
+                "activation buffer length {activation_elements} does not align with manifest input boundaries"
+            )));
+        }
+    }
+    if covered == activation_elements {
+        Ok(inputs.len())
+    } else {
+        Err(RunError::Witness(format!(
+            "activation buffer length {activation_elements} exceeds total input shape sum {covered}"
+        )))
+    }
+}
+
+/// Encode the initialiser portion of a circuit's input array.
+/// Vector-shaped (rank-1) initialisers carry alpha squared because
+/// the slicer pre-scales bias-shaped initialisers by alpha; all
+/// other float-typed initialisers carry alpha.  Integer-typed
+/// initialisers (e.g. INT64 shape constants embedded as
+/// initialisers) bypass quantisation entirely.
+fn push_initializer_inputs<C: Config>(
+    inputs: &[crate::circuit_functions::utils::onnx_types::ONNXIO],
+    initializers: &[(Vec<f64>, Vec<usize>)],
+    alpha: f64,
+    alpha_sq: f64,
+    out: &mut Vec<CircuitField<C>>,
+) -> Result<(), RunError> {
+    for (idx, (values, _shape)) in initializers.iter().enumerate() {
+        let io = &inputs[idx];
+        if is_integer_elem_type(io.elem_type) {
+            for &v in values {
+                out.push(convert_val_to_field_element::<C>(f64_index_to_i64(v)?));
+            }
+        } else {
+            let scale = if io.shape.len() == 1 { alpha_sq } else { alpha };
+            for &v in values {
+                out.push(quantize_f64_to_field::<C>(v, scale));
+            }
+        }
+    }
+    Ok(())
+}
+
 /// # Errors
 /// Returns `RunError` on witness generation, serialization, or activation mismatch.
 pub fn witness_from_f64_generic<C: Config>(
@@ -431,49 +572,19 @@ pub fn witness_from_f64_generic<C: Config>(
     }
 
     let mut input_arr: Vec<CircuitField<C>> = Vec::with_capacity(params.effective_input_dims());
-
-    // Integer-typed tensors (INT64=7, INT32=6, BOOL=9, UINT8=2, UINT16=4,
-    // INT16=5, UINT32=12, UINT64=13) carry logical indices / counts /
-    // booleans that must enter the circuit at unit scale.  Quantising
-    // them by alpha would feed e.g. an INT64 index of 1054 into a
-    // gather as 1054 * 2^scale_exponent and trip every downstream
-    // bounds / mux / range check.
-    let is_integer_elem_type = |t: i16| matches!(t, 2 | 3 | 4 | 5 | 6 | 7 | 9 | 12 | 13);
-    // Integer wire format passes indices / counts as f64 within the
-    // exactly-representable range (|v| <= 2^53), so a `v as i64`
-    // truncation here is precise for every value the slicer emits.
-    #[allow(clippy::cast_possible_truncation)]
-    let f64_index_to_i64 = |v: f64| v.round() as i64;
-
-    let mut act_offset = 0usize;
-    for io in &params.inputs[..num_activation_entries] {
-        let elems: usize = io.shape.iter().product();
-        let end = act_offset + elems;
-        if is_integer_elem_type(io.elem_type) {
-            for &v in &activations[act_offset..end] {
-                input_arr.push(convert_val_to_field_element::<C>(f64_index_to_i64(v)));
-            }
-        } else {
-            for &v in &activations[act_offset..end] {
-                input_arr.push(quantize_f64_to_field::<C>(v, alpha));
-            }
-        }
-        act_offset = end;
-    }
-
-    for (idx, (values, _shape)) in initializers.iter().enumerate() {
-        let io = &params.inputs[num_activation_entries + idx];
-        if is_integer_elem_type(io.elem_type) {
-            for &v in values {
-                input_arr.push(convert_val_to_field_element::<C>(f64_index_to_i64(v)));
-            }
-        } else {
-            let scale = if io.shape.len() == 1 { alpha_sq } else { alpha };
-            for &v in values {
-                input_arr.push(quantize_f64_to_field::<C>(v, scale));
-            }
-        }
-    }
+    push_activation_inputs::<C>(
+        &params.inputs[..num_activation_entries],
+        activations,
+        alpha,
+        &mut input_arr,
+    )?;
+    push_initializer_inputs::<C>(
+        &params.inputs[num_activation_entries..],
+        initializers,
+        alpha,
+        alpha_sq,
+        &mut input_arr,
+    )?;
 
     if input_arr.len() != params.effective_input_dims() {
         return Err(RunError::Witness(format!(
@@ -558,10 +669,21 @@ pub fn build_debug_assignment<C: Config>(
     #[allow(clippy::cast_possible_wrap)]
     let alpha = f64::from(params.scale_base).powi(params.scale_exponent as i32);
 
-    let input_arr: Vec<CircuitField<C>> = activations
-        .iter()
-        .map(|&v| quantize_f64_to_field::<C>(v, alpha))
-        .collect();
+    // Mirror the production witness path: dispatch per-input on
+    // manifest element type so integer indices, counts and BOOL
+    // values bypass alpha quantisation.  Initialisers are loaded
+    // separately by the witness solver from the bundle, so the
+    // debug input array consists of activation entries only -- we
+    // split params.inputs at the boundary where the cumulative
+    // shape product equals the activation buffer length.
+    let activation_entries = activation_input_split(&params.inputs, activations.len())?;
+    let mut input_arr: Vec<CircuitField<C>> = Vec::with_capacity(activations.len());
+    push_activation_inputs::<C>(
+        &params.inputs[..activation_entries],
+        activations,
+        alpha,
+        &mut input_arr,
+    )?;
 
     let layered_circuit = load_circuit_from_bytes::<C>(circuit_bytes)?;
     let witness_solver = load_witness_solver_from_bytes::<C>(solver_bytes)?;
