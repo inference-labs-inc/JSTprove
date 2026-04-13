@@ -40,14 +40,24 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ReshapeLayer {
 
         let inferred_shape = infer_reshape_shape(layer_input.len(), &reshape_shape)?;
 
-        let out = layer_input
-            .into_shape_with_order(IxDyn(&inferred_shape))
-            .map_err(|_| LayerError::InvalidShape {
-                layer: LayerKind::Reshape,
-                msg: format!("Cannot reshape into {inferred_shape:?}"),
-            })?;
+        let out = if layer_input.is_standard_layout() {
+            layer_input
+                .into_shape_with_order(IxDyn(&inferred_shape))
+                .map_err(|_| LayerError::InvalidShape {
+                    layer: LayerKind::Reshape,
+                    msg: format!("Cannot reshape into {inferred_shape:?}"),
+                })?
+        } else {
+            let flat: Vec<Variable> = layer_input.iter().copied().collect();
+            ArrayD::from_shape_vec(IxDyn(&inferred_shape), flat).map_err(|_| {
+                LayerError::InvalidShape {
+                    layer: LayerKind::Reshape,
+                    msg: format!("Cannot reshape into {inferred_shape:?}"),
+                }
+            })?
+        };
 
-        Ok((self.outputs.clone(), out.clone()))
+        Ok((self.outputs.clone(), out))
     }
 
     fn build(

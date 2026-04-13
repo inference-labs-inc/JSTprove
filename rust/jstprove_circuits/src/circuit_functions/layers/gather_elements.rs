@@ -73,10 +73,8 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GatherElementsLayer
                 name: data_name.clone(),
             })?;
 
-        let data_flat = data.as_slice().ok_or_else(|| LayerError::InvalidShape {
-            layer: LayerKind::GatherElements,
-            msg: "data tensor is not contiguous".to_string(),
-        })?;
+        let data_owned: Vec<Variable> = data.iter().copied().collect();
+        let data_flat: &[Variable] = &data_owned;
 
         let out_flat: Vec<Variable> = match &self.mode {
             GatherElementsMode::Precomputed { flat_index_map } => {
@@ -113,13 +111,8 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GatherElementsLayer
                             name: indices_name.clone(),
                         })?;
 
-                let indices_flat =
-                    indices_input
-                        .as_slice()
-                        .ok_or_else(|| LayerError::InvalidShape {
-                            layer: LayerKind::GatherElements,
-                            msg: "indices tensor is not contiguous".to_string(),
-                        })?;
+                let indices_owned: Vec<Variable> = indices_input.iter().copied().collect();
+                let indices_flat: &[Variable] = &indices_owned;
 
                 let rank = self.data_shape.len();
                 if indices_shape.len() != rank {
@@ -318,13 +311,8 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GatherElementsLayer
                 }
                 .into());
             }
-            let indices_flat =
-                indices_array
-                    .as_slice()
-                    .ok_or_else(|| LayerError::InvalidShape {
-                        layer: LayerKind::GatherElements,
-                        msg: "indices tensor is not contiguous".to_string(),
-                    })?;
+            let indices_owned: Vec<i64> = indices_array.iter().copied().collect();
+            let indices_flat: &[i64] = &indices_owned;
 
             let total_out: usize = indices_shape.iter().product();
             let mut flat_index_map = Vec::with_capacity(total_out);
