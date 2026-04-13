@@ -478,11 +478,13 @@ impl<C: Config> BasicAPI<C> for Builder<C> {
         let x = self.convert_to_variable(x);
         let y = self.convert_to_variable(y);
 
-        // Decompose both numbers to bits
+        // Decompose both numbers to bits.  num_bits is chosen as the
+        // smallest k such that the field's prime modulus fits in k bits.
         let num_bits = match CircuitField::<C>::FIELD_SIZE {
-            256 => 254, // BN254's field size was set to 256
-            32 => 31,   // M31's field size was set to 31
-            _ => panic!("Unsupported field size"),
+            256 => 254, // BN254 prime fits in 254 bits
+            64 => 64,   // Goldilocks prime p = 2^64 - 2^32 + 1 fits in 64 bits
+            32 => 31,   // Mersenne31 prime p = 2^31 - 1 fits in 31 bits
+            other => panic!("Unsupported field size: {other}"),
         };
         let x_bits = self.to_binary(x, num_bits);
         let y_bits = self.to_binary(y, num_bits);
