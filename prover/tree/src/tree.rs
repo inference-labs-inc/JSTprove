@@ -114,6 +114,15 @@ impl Tree {
 
         let mut non_leaf_nodes = vec![Node::default(); (1 << (tree_height - 1)) - 1];
 
+        // A single-leaf tree (tree_height == 1) has zero non-leaf
+        // nodes; the leaf hash already serves as the root.  The
+        // bottom-layer loop below pops from level_indices, which is
+        // empty in that case.  Bail out before the unwrap.
+        if tree_height <= 1 {
+            end_timer!(timer);
+            return non_leaf_nodes;
+        }
+
         // Compute the starting indices for each non-leaf level of the tree
         let mut index = 0;
         let mut level_indices = Vec::with_capacity(tree_height as usize - 1);

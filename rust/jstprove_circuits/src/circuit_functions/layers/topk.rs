@@ -60,6 +60,7 @@ use crate::circuit_functions::{
 pub struct TopKLayer {
     inputs: Vec<String>,
     values_output_name: String,
+    indices_output_name: Option<String>,
     input_shape: Vec<usize>,
     axis: usize,
     k: usize,
@@ -94,12 +95,41 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for TopKLayer {
             msg: "data tensor is not contiguous".to_string(),
         })?;
 
-        let axis = self.axis;
-        let k = self.k;
-        let axis_dim = self.input_shape[axis];
+        let shift_n_bits = self.n_bits + 1;
+        let offset_val = 1u64
+            .checked_shl(self.n_bits as u32)
+            .ok_or_else(|| LayerError::Other {
+                layer: LayerKind::TopK,
+                msg: format!("n_bits {} too large for shift offset", self.n_bits),
+            })?;
+        let offset = api.constant(CircuitField::<C>::from_u256(ethnum::U256::from(offset_val)));
+        let scale_var = api.constant(CircuitField::<C>::from_u256(ethnum::U256::from(
+            self.scaling,
+        )));
 
-        let inner: usize = self.input_shape[axis + 1..].iter().product();
-        let outer: usize = self.input_shape[..axis].iter().product();
+        let (values_array, _) =
+            self.compute(api, logup_ctx, data_flat, scale_var, offset, shift_n_bits)?;
+        Ok((vec![self.values_output_name.clone()], values_array))
+    }
+
+    #[allow(clippy::cast_possible_truncation)]
+    fn apply_multi(
+        &self,
+        api: &mut Builder,
+        logup_ctx: &mut LogupRangeCheckContext,
+        input: &HashMap<String, ArrayD<Variable>>,
+    ) -> Result<Vec<(String, ArrayD<Variable>)>, CircuitError> {
+        let data_name = &self.inputs[0];
+        let data = input
+            .get(data_name)
+            .ok_or_else(|| LayerError::MissingInput {
+                layer: LayerKind::TopK,
+                name: data_name.clone(),
+            })?;
+        let data_flat = data.as_slice().ok_or_else(|| LayerError::InvalidShape {
+            layer: LayerKind::TopK,
+            msg: "data tensor is not contiguous".to_string(),
+        })?;
 
         let shift_n_bits = self.n_bits + 1;
         let offset_val = 1u64
@@ -113,80 +143,14 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for TopKLayer {
             self.scaling,
         )));
 
-        let out_total: usize = self.output_shape.iter().product();
-        let mut out_flat = vec![api.constant(0u32); out_total];
-
-        for o in 0..outer {
-            for inr in 0..inner {
-                let lane: Vec<Variable> = (0..axis_dim)
-                    .map(|a| data_flat[(o * axis_dim + a) * inner + inr])
-                    .collect();
-
-                let mut hint_inputs = Vec::with_capacity(axis_dim + 1);
-                hint_inputs.extend_from_slice(&lane);
-                hint_inputs.push(scale_var);
-
-                let hint_out = api.new_hint(TOPK_HINT_KEY, &hint_inputs, 2 * k);
-                let values = &hint_out[..k];
-
-                let mut membership_prods: Vec<Variable> =
-                    (0..k).map(|_| api.constant(1u32)).collect();
-                let min_val = values[k - 1];
-
-                for &elem in &lane {
-                    let mut qi = api.constant(1u32);
-                    for j in 0..k {
-                        let factor = api.sub(values[j], elem);
-                        membership_prods[j] = api.mul(membership_prods[j], factor);
-                        qi = api.mul(qi, factor);
-                    }
-
-                    let is_sel = api.is_zero(qi);
-                    let one_c = api.constant(1u32);
-                    let not_sel = api.sub(one_c, is_sel);
-
-                    let delta = api.sub(min_val, elem);
-                    let check_val = api.mul(not_sel, delta);
-
-                    logup_ctx
-                        .range_check::<C, Builder>(api, check_val, shift_n_bits)
-                        .map_err(|e| LayerError::Other {
-                            layer: LayerKind::TopK,
-                            msg: format!("top-K bound range check failed: {e}"),
-                        })?;
-                }
-
-                for j in 0..k {
-                    api.assert_is_zero(membership_prods[j]);
-
-                    let out_idx = (o * k + j) * inner + inr;
-                    out_flat[out_idx] = values[j];
-                }
-
-                for j in 0..k.saturating_sub(1) {
-                    let diff = api.sub(values[j], values[j + 1]);
-                    let shifted = api.add(diff, offset);
-                    logup_ctx
-                        .range_check::<C, Builder>(api, shifted, shift_n_bits)
-                        .map_err(|e| LayerError::Other {
-                            layer: LayerKind::TopK,
-                            msg: format!("sorted order range check failed: {e}"),
-                        })?;
-                }
-            }
+        let (values_array, indices_array) =
+            self.compute(api, logup_ctx, data_flat, scale_var, offset, shift_n_bits)?;
+        let mut out = vec![(self.values_output_name.clone(), values_array)];
+        if let Some(ref name) = self.indices_output_name {
+            out.push((name.clone(), indices_array));
         }
-
-        let out_array =
-            ArrayD::from_shape_vec(IxDyn(&self.output_shape), out_flat).map_err(|e| {
-                LayerError::InvalidShape {
-                    layer: LayerKind::TopK,
-                    msg: format!("output reshape failed: {e}"),
-                }
-            })?;
-
-        Ok((vec![self.values_output_name.clone()], out_array))
+        Ok(out)
     }
-
     #[allow(
         clippy::too_many_lines,
         clippy::cast_possible_wrap,
@@ -432,9 +396,12 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for TopKLayer {
                 ),
             })?;
 
+        let indices_output_name = layer.outputs.get(1).filter(|s| !s.is_empty()).cloned();
+
         Ok(Box::new(Self {
             inputs: layer.inputs.clone(),
             values_output_name,
+            indices_output_name,
             input_shape,
             axis,
             k,
@@ -442,5 +409,153 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for TopKLayer {
             n_bits,
             scaling,
         }))
+    }
+}
+
+impl TopKLayer {
+    #[allow(
+        clippy::cast_possible_wrap,
+        clippy::cast_possible_truncation,
+        clippy::too_many_arguments,
+        clippy::too_many_lines
+    )]
+    fn compute<C: Config, Builder: RootAPI<C>>(
+        &self,
+        api: &mut Builder,
+        logup_ctx: &mut LogupRangeCheckContext,
+        data_flat: &[Variable],
+        scale_var: Variable,
+        offset: Variable,
+        shift_n_bits: usize,
+    ) -> Result<(ArrayD<Variable>, ArrayD<Variable>), CircuitError> {
+        let axis = self.axis;
+        let k = self.k;
+        let axis_dim = self.input_shape[axis];
+        let inner: usize = self.input_shape[axis + 1..].iter().product();
+        let outer: usize = self.input_shape[..axis].iter().product();
+        let out_total: usize = self.output_shape.iter().product();
+        let mut out_flat = vec![api.constant(0u32); out_total];
+        let mut idx_flat = vec![api.constant(0u32); out_total];
+
+        let axis_dim_minus_one = api.constant(CircuitField::<C>::from_u256(ethnum::U256::from(
+            (axis_dim.saturating_sub(1)) as u64,
+        )));
+        let idx_bits = (usize::BITS - axis_dim.saturating_sub(1).leading_zeros()) as usize;
+        let idx_bits = idx_bits.max(1);
+
+        for o in 0..outer {
+            for inr in 0..inner {
+                let lane: Vec<Variable> = (0..axis_dim)
+                    .map(|a| data_flat[(o * axis_dim + a) * inner + inr])
+                    .collect();
+
+                let mut hint_inputs = Vec::with_capacity(axis_dim + 1);
+                hint_inputs.extend_from_slice(&lane);
+                hint_inputs.push(scale_var);
+
+                let hint_out = api.new_hint(TOPK_HINT_KEY, &hint_inputs, 2 * k);
+                let values = &hint_out[..k];
+                let indices = &hint_out[k..];
+
+                let mut membership_prods: Vec<Variable> =
+                    (0..k).map(|_| api.constant(1u32)).collect();
+                let min_val = values[k - 1];
+
+                for &elem in &lane {
+                    let mut qi = api.constant(1u32);
+                    for j in 0..k {
+                        let factor = api.sub(values[j], elem);
+                        membership_prods[j] = api.mul(membership_prods[j], factor);
+                        qi = api.mul(qi, factor);
+                    }
+
+                    let is_sel = api.is_zero(qi);
+                    let one_c = api.constant(1u32);
+                    let not_sel = api.sub(one_c, is_sel);
+
+                    let delta = api.sub(min_val, elem);
+                    let check_val = api.mul(not_sel, delta);
+
+                    logup_ctx
+                        .range_check::<C, Builder>(api, check_val, shift_n_bits)
+                        .map_err(|e| LayerError::Other {
+                            layer: LayerKind::TopK,
+                            msg: format!("top-K bound range check failed: {e}"),
+                        })?;
+                }
+
+                for j in 0..k {
+                    api.assert_is_zero(membership_prods[j]);
+
+                    let out_idx = (o * k + j) * inner + inr;
+                    out_flat[out_idx] = values[j];
+                    idx_flat[out_idx] = indices[j];
+                }
+
+                for j in 0..k.saturating_sub(1) {
+                    let diff = api.sub(values[j], values[j + 1]);
+                    let shifted = api.add(diff, offset);
+                    logup_ctx
+                        .range_check::<C, Builder>(api, shifted, shift_n_bits)
+                        .map_err(|e| LayerError::Other {
+                            layer: LayerKind::TopK,
+                            msg: format!("sorted order range check failed: {e}"),
+                        })?;
+                }
+
+                // Constrain each indices[j] in [0, axis_dim) and that
+                // lane[indices[j]] == values[j].  Without these the
+                // hint could return arbitrary indices and break
+                // soundness.
+                for j in 0..k {
+                    let idx_var = indices[j];
+                    logup_ctx
+                        .range_check::<C, Builder>(api, idx_var, idx_bits)
+                        .map_err(|e| LayerError::Other {
+                            layer: LayerKind::TopK,
+                            msg: format!("top-K index range check failed: {e}"),
+                        })?;
+                    let upper = api.sub(axis_dim_minus_one, idx_var);
+                    logup_ctx
+                        .range_check::<C, Builder>(api, upper, idx_bits)
+                        .map_err(|e| LayerError::Other {
+                            layer: LayerKind::TopK,
+                            msg: format!("top-K index upper-bound check failed: {e}"),
+                        })?;
+
+                    // selected = sum_a (a == idx_var) * lane[a]
+                    // matched_sum = sum_a (a == idx_var)  (must equal 1)
+                    let mut selected = api.constant(0u32);
+                    let mut matched_sum = api.constant(0u32);
+                    for (a, &elem) in lane.iter().enumerate() {
+                        let a_var = api.constant(a as u32);
+                        let diff_a = api.sub(idx_var, a_var);
+                        let is_match = api.is_zero(diff_a);
+                        let contrib = api.mul(is_match, elem);
+                        selected = api.add(selected, contrib);
+                        matched_sum = api.add(matched_sum, is_match);
+                    }
+                    let one = api.constant(1u32);
+                    api.assert_is_equal(matched_sum, one);
+                    api.assert_is_equal(selected, values[j]);
+                }
+            }
+        }
+
+        let values_array =
+            ArrayD::from_shape_vec(IxDyn(&self.output_shape), out_flat).map_err(|e| {
+                LayerError::InvalidShape {
+                    layer: LayerKind::TopK,
+                    msg: format!("values reshape failed: {e}"),
+                }
+            })?;
+        let indices_array =
+            ArrayD::from_shape_vec(IxDyn(&self.output_shape), idx_flat).map_err(|e| {
+                LayerError::InvalidShape {
+                    layer: LayerKind::TopK,
+                    msg: format!("indices reshape failed: {e}"),
+                }
+            })?;
+        Ok((values_array, indices_array))
     }
 }

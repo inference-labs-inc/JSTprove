@@ -187,10 +187,11 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for SliceLayer {
             name: x_name.to_string(),
         })?;
 
-        let data_flat = x_input.as_slice().ok_or_else(|| LayerError::InvalidShape {
-            layer: LayerKind::Slice,
-            msg: "input tensor is not contiguous".to_string(),
-        })?;
+        let data_owned: Vec<Variable> = match x_input.as_slice() {
+            Some(s) => s.to_vec(),
+            None => x_input.iter().copied().collect(),
+        };
+        let data_flat: &[Variable] = &data_owned;
 
         // Structural passthrough: select elements by the precomputed index map.
         let out_flat: Vec<Variable> = self.index_map.iter().map(|&idx| data_flat[idx]).collect();

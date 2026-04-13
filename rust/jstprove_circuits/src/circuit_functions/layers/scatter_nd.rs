@@ -64,16 +64,17 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ScatterNDLayer {
                 name: updates_name.clone(),
             })?;
 
-        let data_flat = data.as_slice().ok_or_else(|| LayerError::InvalidShape {
-            layer: LayerKind::ScatterND,
-            msg: "data tensor is not contiguous".to_string(),
-        })?;
-        let updates_flat = updates.as_slice().ok_or_else(|| LayerError::InvalidShape {
-            layer: LayerKind::ScatterND,
-            msg: "updates tensor is not contiguous".to_string(),
-        })?;
+        let data_flat: Vec<Variable> = match data.as_slice() {
+            Some(s) => s.to_vec(),
+            None => data.iter().copied().collect(),
+        };
+        let updates_owned: Vec<Variable> = match updates.as_slice() {
+            Some(s) => s.to_vec(),
+            None => updates.iter().copied().collect(),
+        };
+        let updates_flat: &[Variable] = &updates_owned;
 
-        let mut out_flat: Vec<Variable> = data_flat.to_vec();
+        let mut out_flat: Vec<Variable> = data_flat;
 
         for (&data_idx, &update_idx) in &self.update_map {
             if data_idx < out_flat.len() && update_idx < updates_flat.len() {

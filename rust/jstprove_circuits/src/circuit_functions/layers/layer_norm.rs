@@ -212,13 +212,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for LayerNormLayer {
         let mean_abs_bits: usize = n_bits + 1;
 
         let outer_size: usize = shape[..axis].iter().product();
-        let flat_input: Vec<Variable> = x_input
-            .as_slice()
-            .ok_or_else(|| LayerError::InvalidShape {
-                layer: LayerKind::LayerNormalization,
-                msg: "input tensor is not contiguous".to_string(),
-            })?
-            .to_vec();
+        let flat_input: Vec<Variable> = x_input.iter().copied().collect();
 
         let mut out_array = ArrayD::from_elem(IxDyn(&shape), zero_var);
         let mut flat_output: Vec<Variable> = Vec::with_capacity(flat_input.len());
