@@ -432,15 +432,46 @@ pub fn witness_from_f64_generic<C: Config>(
 
     let mut input_arr: Vec<CircuitField<C>> = Vec::with_capacity(params.effective_input_dims());
 
-    for &v in activations {
-        input_arr.push(quantize_f64_to_field::<C>(v, alpha));
+    // Integer-typed tensors (INT64=7, INT32=6, BOOL=9, UINT8=2, UINT16=4,
+    // INT16=5, UINT32=12, UINT64=13) carry logical indices / counts /
+    // booleans that must enter the circuit at unit scale.  Quantising
+    // them by alpha would feed e.g. an INT64 index of 1054 into a
+    // gather as 1054 * 2^scale_exponent and trip every downstream
+    // bounds / mux / range check.
+    let is_integer_elem_type = |t: i16| matches!(t, 2 | 3 | 4 | 5 | 6 | 7 | 9 | 12 | 13);
+    // Integer wire format passes indices / counts as f64 within the
+    // exactly-representable range (|v| <= 2^53), so a `v as i64`
+    // truncation here is precise for every value the slicer emits.
+    #[allow(clippy::cast_possible_truncation)]
+    let f64_index_to_i64 = |v: f64| v.round() as i64;
+
+    let mut act_offset = 0usize;
+    for io in &params.inputs[..num_activation_entries] {
+        let elems: usize = io.shape.iter().product();
+        let end = act_offset + elems;
+        if is_integer_elem_type(io.elem_type) {
+            for &v in &activations[act_offset..end] {
+                input_arr.push(convert_val_to_field_element::<C>(f64_index_to_i64(v)));
+            }
+        } else {
+            for &v in &activations[act_offset..end] {
+                input_arr.push(quantize_f64_to_field::<C>(v, alpha));
+            }
+        }
+        act_offset = end;
     }
 
     for (idx, (values, _shape)) in initializers.iter().enumerate() {
         let io = &params.inputs[num_activation_entries + idx];
-        let scale = if io.shape.len() == 1 { alpha_sq } else { alpha };
-        for &v in values {
-            input_arr.push(quantize_f64_to_field::<C>(v, scale));
+        if is_integer_elem_type(io.elem_type) {
+            for &v in values {
+                input_arr.push(convert_val_to_field_element::<C>(f64_index_to_i64(v)));
+            }
+        } else {
+            let scale = if io.shape.len() == 1 { alpha_sq } else { alpha };
+            for &v in values {
+                input_arr.push(quantize_f64_to_field::<C>(v, scale));
+            }
         }
     }
 
