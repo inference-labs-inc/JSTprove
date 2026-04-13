@@ -25,7 +25,7 @@
 //!   [a_{0,0}, a_{0,1}, ..., a_{0,m-1}, a_{1,0}, ..., a_{ell-1,m-1},
 //!    b_{0,0}, ..., b_{m-1,n-1}]
 //!
-//! followed by three constant u32 dimensions encoded as field elements:
+//! followed by three constant u64-backed field values encoding the dimensions:
 //!
 //!   [ell, m, n]
 //!
@@ -52,7 +52,19 @@ pub fn matmul_hint<F: FieldArith>(inputs: &[F], outputs: &mut [F]) -> Result<(),
     }
     let tail_len = inputs.len();
     let to_usize = |x: &F| -> Result<usize, Error> {
-        usize::try_from(x.to_u256().as_u64()).map_err(|_| {
+        let v = x.to_u256();
+        if v > U256::from(usize::MAX as u128) {
+            return Err(Error::UserError(
+                "matmul_hint: dimension does not fit in usize on this target".to_string(),
+            ));
+        }
+        let (hi, lo) = v.into_words();
+        if hi != 0 {
+            return Err(Error::UserError(
+                "matmul_hint: dimension does not fit in usize on this target".to_string(),
+            ));
+        }
+        usize::try_from(lo).map_err(|_| {
             Error::UserError(
                 "matmul_hint: dimension does not fit in usize on this target".to_string(),
             )
@@ -62,23 +74,33 @@ pub fn matmul_hint<F: FieldArith>(inputs: &[F], outputs: &mut [F]) -> Result<(),
     let m = to_usize(&inputs[tail_len - 2])?;
     let n = to_usize(&inputs[tail_len - 1])?;
 
-    let expected_input_len = ell * m + m * n + 3;
+    let overflow = || {
+        Error::UserError(format!(
+            "matmul_hint: dimension product overflows usize for ell={ell} m={m} n={n}"
+        ))
+    };
+    let ell_m = ell.checked_mul(m).ok_or_else(overflow)?;
+    let m_n = m.checked_mul(n).ok_or_else(overflow)?;
+    let ell_n = ell.checked_mul(n).ok_or_else(overflow)?;
+    let expected_input_len = ell_m
+        .checked_add(m_n)
+        .and_then(|s| s.checked_add(3))
+        .ok_or_else(overflow)?;
     if inputs.len() != expected_input_len {
         return Err(Error::UserError(format!(
             "matmul_hint: expected {expected_input_len} inputs for ell={ell} m={m} n={n} (ell*m + m*n + 3), got {}",
             inputs.len()
         )));
     }
-    if outputs.len() != ell * n {
+    if outputs.len() != ell_n {
         return Err(Error::UserError(format!(
-            "matmul_hint: expected {} outputs (ell*n), got {}",
-            ell * n,
+            "matmul_hint: expected {ell_n} outputs (ell*n), got {}",
             outputs.len()
         )));
     }
 
-    let a = &inputs[..ell * m];
-    let b = &inputs[ell * m..ell * m + m * n];
+    let a = &inputs[..ell_m];
+    let b = &inputs[ell_m..ell_m + m_n];
 
     for i in 0..ell {
         let a_row = &a[i * m..(i + 1) * m];
