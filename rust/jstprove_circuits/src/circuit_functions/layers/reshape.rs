@@ -30,31 +30,28 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ReshapeLayer {
     ) -> Result<(Vec<String>, ArrayD<Variable>), CircuitError> {
         let reshape_shape = self.shape.clone();
         let input_name = get_input_name(&self.inputs, 0, LayerKind::Reshape, INPUT)?;
-        let layer_input = input
-            .get(&input_name.clone())
-            .ok_or_else(|| LayerError::MissingInput {
-                layer: LayerKind::Reshape,
-                name: input_name.clone(),
-            })?
-            .clone();
+        let layer_input =
+            input
+                .get(&input_name.clone())
+                .ok_or_else(|| LayerError::MissingInput {
+                    layer: LayerKind::Reshape,
+                    name: input_name.clone(),
+                })?;
 
         let inferred_shape = infer_reshape_shape(layer_input.len(), &reshape_shape)?;
+        let invalid_shape = || LayerError::InvalidShape {
+            layer: LayerKind::Reshape,
+            msg: format!("Cannot reshape into {inferred_shape:?}"),
+        };
 
         let out = if layer_input.is_standard_layout() {
             layer_input
+                .clone()
                 .into_shape_with_order(IxDyn(&inferred_shape))
-                .map_err(|_| LayerError::InvalidShape {
-                    layer: LayerKind::Reshape,
-                    msg: format!("Cannot reshape into {inferred_shape:?}"),
-                })?
+                .map_err(|_| invalid_shape())?
         } else {
             let flat: Vec<Variable> = layer_input.iter().copied().collect();
-            ArrayD::from_shape_vec(IxDyn(&inferred_shape), flat).map_err(|_| {
-                LayerError::InvalidShape {
-                    layer: LayerKind::Reshape,
-                    msg: format!("Cannot reshape into {inferred_shape:?}"),
-                }
-            })?
+            ArrayD::from_shape_vec(IxDyn(&inferred_shape), flat).map_err(|_| invalid_shape())?
         };
 
         Ok((self.outputs.clone(), out))

@@ -1,6 +1,14 @@
+use std::borrow::Cow;
 use std::collections::HashMap;
 
 use ndarray::{ArrayD, IxDyn};
+
+fn slice_or_owned<T: Copy>(a: &ArrayD<T>) -> Cow<'_, [T]> {
+    match a.as_slice() {
+        Some(s) => Cow::Borrowed(s),
+        None => Cow::Owned(a.iter().copied().collect()),
+    }
+}
 
 use expander_compiler::frontend::{Config, RootAPI, Variable};
 
@@ -73,8 +81,8 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GatherElementsLayer
                 name: data_name.clone(),
             })?;
 
-        let data_owned: Vec<Variable> = data.iter().copied().collect();
-        let data_flat: &[Variable] = &data_owned;
+        let data_cow = slice_or_owned(data);
+        let data_flat: &[Variable] = &data_cow;
 
         let out_flat: Vec<Variable> = match &self.mode {
             GatherElementsMode::Precomputed { flat_index_map } => {
@@ -111,8 +119,8 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GatherElementsLayer
                             name: indices_name.clone(),
                         })?;
 
-                let indices_owned: Vec<Variable> = indices_input.iter().copied().collect();
-                let indices_flat: &[Variable] = &indices_owned;
+                let indices_cow = slice_or_owned(indices_input);
+                let indices_flat: &[Variable] = &indices_cow;
 
                 let rank = self.data_shape.len();
                 if indices_shape.len() != rank {
@@ -311,8 +319,8 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GatherElementsLayer
                 }
                 .into());
             }
-            let indices_owned: Vec<i64> = indices_array.iter().copied().collect();
-            let indices_flat: &[i64] = &indices_owned;
+            let indices_cow = slice_or_owned(&indices_array);
+            let indices_flat: &[i64] = &indices_cow;
 
             let total_out: usize = indices_shape.iter().product();
             let mut flat_index_map = Vec::with_capacity(total_out);
@@ -409,6 +417,28 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GatherElementsLayer
 
 #[cfg(test)]
 mod tests {
+    use super::slice_or_owned;
+    use ndarray::{ArrayD, IxDyn};
+    use std::borrow::Cow;
+
+    #[test]
+    fn slice_or_owned_borrows_on_contiguous_input() {
+        let a: ArrayD<u32> = ArrayD::from_shape_vec(IxDyn(&[2, 3]), (0..6u32).collect()).unwrap();
+        let cow = slice_or_owned(&a);
+        assert!(matches!(cow, Cow::Borrowed(_)));
+        assert_eq!(&*cow, &[0, 1, 2, 3, 4, 5]);
+    }
+
+    #[test]
+    fn slice_or_owned_materializes_on_permuted_input() {
+        let a: ArrayD<u32> = ArrayD::from_shape_vec(IxDyn(&[2, 3]), (0..6u32).collect()).unwrap();
+        let permuted = a.permuted_axes(IxDyn(&[1, 0]));
+        assert!(!permuted.is_standard_layout());
+        let cow = slice_or_owned(&permuted);
+        assert!(matches!(cow, Cow::Owned(_)));
+        assert_eq!(&*cow, &[0, 3, 1, 4, 2, 5]);
+    }
+
     #[test]
     fn gather_elements_axis0_index_map() {
         let data_shape = [3usize, 3];
