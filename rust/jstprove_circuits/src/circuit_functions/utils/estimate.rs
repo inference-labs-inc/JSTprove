@@ -368,7 +368,9 @@ fn estimate_single_op(
         "LayerNormalization"
         | "InstanceNormalization"
         | "GroupNormalization"
-        | "BatchNormalization" => OpEstimate::elementwise(out_elems, 3, QueryKind::Rescale, config),
+        | "BatchNormalization" => {
+            OpEstimate::elementwise(out_elems, 15, QueryKind::Relu(6), config)
+        }
 
         "Mul" => OpEstimate::elementwise(
             out_elems,
