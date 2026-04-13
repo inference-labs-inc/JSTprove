@@ -82,6 +82,9 @@ pub use cos::cos_hint;
 pub mod reduce_max;
 pub use reduce_max::reduce_max_hint;
 
+pub mod matmul;
+pub use matmul::{MATMUL_HINT_KEY, matmul_hint};
+
 /// LogUp hint registration
 use circuit_std_rs::logup::{query_count_by_key_hint, query_count_hint, rangeproof_hint};
 use expander_compiler::field::Field as CompilerField;
@@ -165,6 +168,7 @@ pub fn build_logup_hint_registry<F: CompilerField>() -> HintRegistry<F> {
         gather_elements::GATHER_ELEMENTS_HINT_KEY,
         gather_elements_hint::<F>,
     );
+    registry.register(matmul::MATMUL_HINT_KEY, matmul_hint::<F>);
 
     registry
 }
