@@ -76,6 +76,7 @@ fn make_conv_metadata() -> (CircuitParams, Architecture, WANDB) {
         weights_as_inputs: false,
         proof_system: ProofSystem::Expander,
         proof_config: None,
+        public_inputs: Vec::new(),
         // Pin chunk width to skip the autotuner sweep, keeping the bench deterministic.
         logup_chunk_bits: Some(12),
     };
@@ -262,6 +263,7 @@ fn make_gemm_metadata() -> (CircuitParams, Architecture, WANDB) {
         weights_as_inputs: false,
         proof_system: ProofSystem::Expander,
         proof_config: None,
+        public_inputs: Vec::new(),
         logup_chunk_bits: Some(12),
     };
 
@@ -431,6 +433,7 @@ fn make_softmax_metadata() -> (CircuitParams, Architecture, WANDB) {
         weights_as_inputs: false,
         proof_system: ProofSystem::Expander,
         proof_config: None,
+        public_inputs: Vec::new(),
         logup_chunk_bits: Some(12),
     };
 
@@ -563,6 +566,7 @@ fn make_layer_norm_metadata() -> (CircuitParams, Architecture, WANDB) {
         weights_as_inputs: false,
         proof_system: ProofSystem::Expander,
         proof_config: None,
+        public_inputs: Vec::new(),
         logup_chunk_bits: Some(12),
     };
 
@@ -731,6 +735,7 @@ fn make_averagepool_metadata() -> (CircuitParams, Architecture, WANDB) {
         weights_as_inputs: false,
         proof_system: ProofSystem::Expander,
         proof_config: None,
+        public_inputs: Vec::new(),
         logup_chunk_bits: Some(12),
     };
 
@@ -875,6 +880,7 @@ fn make_conv_transpose_metadata() -> (CircuitParams, Architecture, WANDB) {
         weights_as_inputs: false,
         proof_system: ProofSystem::Expander,
         proof_config: None,
+        public_inputs: Vec::new(),
         logup_chunk_bits: Some(12),
     };
 

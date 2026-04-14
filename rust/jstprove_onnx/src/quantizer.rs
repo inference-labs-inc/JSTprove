@@ -542,18 +542,38 @@ fn propagate_shapes(graph: &LayerGraph) -> Result<HashMap<String, Vec<usize>>> {
                             layer.attributes.get("allowzero"),
                             Some(AttrValue::Int(v)) if *v != 0
                         );
-                        let in_shape: &[usize] = input_shape.as_deref().unwrap_or(&[]);
-                        let input_total: usize = in_shape.iter().product();
+                        // Keep the source shape optional so "no
+                        // shape traced yet" is distinct from "empty
+                        // tensor".  input_total is None when ANY
+                        // source dim is unknown; a 0-dim source
+                        // with allowzero=true still gives Some(0).
+                        let in_shape: Option<&[usize]> = input_shape.as_deref();
+                        let input_total: Option<usize> =
+                            in_shape.map(|s| s.iter().product::<usize>());
 
-                        // First pass: resolve 0 → copy and positives; -1 → infer; other negatives are invalid.
+                        // First pass: resolve fixed dims; leave
+                        // infer / unknown-copy cases as None so a
+                        // later pass can tell them apart from a
+                        // genuine 0.
                         let mut dims: Vec<Option<usize>> = Vec::with_capacity(raw.len());
                         for (i, &d) in raw.iter().enumerate() {
                             if d == 0 {
-                                dims.push(if allowzero {
-                                    Some(0)
+                                if allowzero {
+                                    dims.push(Some(0));
                                 } else {
-                                    Some(in_shape.get(i).copied().unwrap_or(0))
-                                });
+                                    // Copy the source dim only when
+                                    // that dim is actually known.
+                                    // Falling back to 0 here would
+                                    // silently conflate "unknown"
+                                    // with "empty" and produce an
+                                    // empty tensor for a reshape
+                                    // whose source shape the shape
+                                    // tracer couldn't model.
+                                    match in_shape.and_then(|s| s.get(i).copied()) {
+                                        Some(v) => dims.push(Some(v)),
+                                        None => dims.push(None),
+                                    }
+                                }
                             } else if d > 0 {
                                 dims.push(Some(d as usize));
                             } else if d == -1 {
@@ -566,9 +586,22 @@ fn propagate_shapes(graph: &LayerGraph) -> Result<HashMap<String, Vec<usize>>> {
                             }
                         }
 
-                        // Infer or validate dimensions based on how many are unknown.
+                        // Infer or validate dimensions based on how
+                        // many are unknown, but only when the source
+                        // shape is fully known -- otherwise the
+                        // arithmetic below would treat a None-total
+                        // as zero and silently produce an empty
+                        // tensor.
                         let n_unknown = dims.iter().filter(|d| d.is_none()).count();
-                        if n_unknown == 1 && input_total > 0 {
+                        if n_unknown > 1 {
+                            anyhow::bail!(
+                                "Reshape layer '{}': more than one -1 / unresolved-copy dimension is not allowed",
+                                layer.name
+                            );
+                        }
+                        if let (1, Some(total)) = (n_unknown, input_total)
+                            && total > 0
+                        {
                             let known: usize = dims.iter().filter_map(|&d| d).product();
                             if known == 0 {
                                 anyhow::bail!(
@@ -576,37 +609,31 @@ fn propagate_shapes(graph: &LayerGraph) -> Result<HashMap<String, Vec<usize>>> {
                                     layer.name
                                 );
                             }
-                            if input_total % known != 0 {
+                            if total % known != 0 {
                                 anyhow::bail!(
-                                    "Reshape layer '{}': input total {} is not divisible by known dims product {}",
-                                    layer.name, input_total, known
+                                    "Reshape layer '{}': input total {total} is not divisible by known dims product {known}"
                                 );
                             }
-                            let inferred = input_total / known;
+                            let inferred = total / known;
                             for d in &mut dims {
                                 if d.is_none() {
                                     *d = Some(inferred);
                                     break;
                                 }
                             }
-                        } else if n_unknown > 1 {
-                            anyhow::bail!(
-                                "Reshape layer '{}': more than one -1 dimension is not allowed",
-                                layer.name
-                            );
                         }
-                        // n_unknown == 0: all dimensions are fixed. We intentionally do not
-                        // validate target product == input_total here because propagate_shapes
-                        // uses best-effort fallback shapes for ops it does not fully model
-                        // (e.g. Resize), so input_total can be stale or wrong; checking it
-                        // would produce false errors for valid models.
+                        // n_unknown == 0: all dimensions are fixed.
+                        // n_unknown == 1 with unknown source:
+                        // surface below as an explicit error rather
+                        // than guessing a dimension from an
+                        // unknown total.
 
                         // All None should be resolved by now; any remaining None is an error.
                         dims.into_iter()
                             .map(|d| {
                                 d.ok_or_else(|| {
                                     anyhow::anyhow!(
-                                        "Reshape layer '{}': could not infer -1 dimension (input shape unknown)",
+                                        "Reshape layer '{}': could not infer -1 / copy dimension because the input shape is unknown",
                                         layer.name
                                     )
                                 })

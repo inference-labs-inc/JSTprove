@@ -33,6 +33,28 @@ fn model_path() -> std::path::PathBuf {
         .join(format!("{}.onnx", model_name()))
 }
 
+/// Load ONNX metadata for the benchmark model and prepare the
+/// circuit inputs required to drive `compile_bn254` inside the
+/// measured section.  Both benchmarks in this file used to inline
+/// the same three-step dance (generate metadata, clone params,
+/// strip logup_chunk_bits, clone architecture + wandb), with the
+/// warm-compile bench additionally doing it twice (cache prime +
+/// measured block).  Extracting the preparation here keeps the
+/// two sites from drifting and makes the "force autotuner sweep"
+/// invariant (logup_chunk_bits = None) a single line.
+fn bench_setup(
+    path: &Path,
+) -> (
+    jstprove_circuits::circuit_functions::utils::onnx_model::CircuitParams,
+    jstprove_circuits::circuit_functions::utils::onnx_model::Architecture,
+    Option<jstprove_circuits::circuit_functions::utils::onnx_model::WANDB>,
+) {
+    let metadata = expander_metadata::generate_from_onnx(path).unwrap();
+    let mut params = metadata.circuit_params;
+    params.logup_chunk_bits = None;
+    (params, metadata.architecture, Some(metadata.wandb))
+}
+
 /// Benchmark cold compile: the autotuner cache is cleared before every iteration,
 /// forcing a full sweep each time.
 fn bench_cold_compile(c: &mut Criterion) {
@@ -44,13 +66,10 @@ fn bench_cold_compile(c: &mut Criterion) {
         path.display()
     );
 
-    let metadata = expander_metadata::generate_from_onnx(&path).unwrap();
-    // Force logup_chunk_bits = None so compile_bn254 always invokes the autotuner
-    // sweep rather than using a pre-set fixed width from the model metadata.
-    let mut params = metadata.circuit_params.clone();
-    params.logup_chunk_bits = None;
-    let arch = metadata.architecture.clone();
-    let wandb = metadata.wandb.clone();
+    // Force logup_chunk_bits = None via bench_setup so compile_bn254
+    // always invokes the autotuner sweep rather than using a pre-set
+    // fixed width from the model metadata.
+    let (params, arch, wandb) = bench_setup(&path);
 
     let mut group = c.benchmark_group("autotuner/cold_compile");
     group.sample_size(10);
@@ -60,7 +79,7 @@ fn bench_cold_compile(c: &mut Criterion) {
         b.iter_batched(
             || {
                 clear_cache();
-                OnnxContext::set_all(arch.clone(), params.clone(), Some(wandb.clone()));
+                OnnxContext::set_all(arch.clone(), params.clone(), wandb.clone());
                 tempfile::TempDir::new().unwrap()
             },
             |tmp| {
@@ -92,11 +111,9 @@ fn bench_warm_compile(c: &mut Criterion) {
 
     // Pre-populate the cache with one cold compile.
     {
-        let metadata = expander_metadata::generate_from_onnx(&path).unwrap();
-        let mut params = metadata.circuit_params.clone();
-        params.logup_chunk_bits = None;
+        let (params, arch, wandb) = bench_setup(&path);
         clear_cache();
-        OnnxContext::set_all(metadata.architecture, params.clone(), Some(metadata.wandb));
+        OnnxContext::set_all(arch, params.clone(), wandb);
         let tmp = tempfile::TempDir::new().unwrap();
         compile_bn254(
             tmp.path().join("circuit.bundle").to_str().unwrap(),
@@ -106,13 +123,9 @@ fn bench_warm_compile(c: &mut Criterion) {
         .unwrap();
     }
 
-    let metadata = expander_metadata::generate_from_onnx(&path).unwrap();
-    // Force logup_chunk_bits = None so the measured iterations hit the autotuner
-    // cache path rather than bypassing the autotuner with a fixed chunk width.
-    let mut params = metadata.circuit_params.clone();
-    params.logup_chunk_bits = None;
-    let arch = metadata.architecture.clone();
-    let wandb = metadata.wandb.clone();
+    // Measured-block setup reuses the same helper so the force-
+    // autotuner invariant cannot drift between prime and measure.
+    let (params, arch, wandb) = bench_setup(&path);
 
     let mut group = c.benchmark_group("autotuner/warm_compile");
     group.sample_size(10);
@@ -121,7 +134,7 @@ fn bench_warm_compile(c: &mut Criterion) {
     group.bench_function(model_name(), |b| {
         b.iter_batched(
             || {
-                OnnxContext::set_all(arch.clone(), params.clone(), Some(wandb.clone()));
+                OnnxContext::set_all(arch.clone(), params.clone(), wandb.clone());
                 tempfile::TempDir::new().unwrap()
             },
             |tmp| {
