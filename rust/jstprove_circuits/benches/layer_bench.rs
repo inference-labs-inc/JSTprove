@@ -75,7 +75,7 @@ fn make_conv_metadata() -> (CircuitParams, Architecture, WANDB) {
         n_bits_config: HashMap::new(),
         weights_as_inputs: false,
         proof_system: ProofSystem::Expander,
-        curve: None,
+        proof_config: None,
         // Pin chunk width to skip the autotuner sweep, keeping the bench deterministic.
         logup_chunk_bits: Some(12),
     };
@@ -261,7 +261,7 @@ fn make_gemm_metadata() -> (CircuitParams, Architecture, WANDB) {
         n_bits_config: HashMap::new(),
         weights_as_inputs: false,
         proof_system: ProofSystem::Expander,
-        curve: None,
+        proof_config: None,
         logup_chunk_bits: Some(12),
     };
 
@@ -430,7 +430,7 @@ fn make_softmax_metadata() -> (CircuitParams, Architecture, WANDB) {
         n_bits_config: HashMap::new(),
         weights_as_inputs: false,
         proof_system: ProofSystem::Expander,
-        curve: None,
+        proof_config: None,
         logup_chunk_bits: Some(12),
     };
 
@@ -562,7 +562,7 @@ fn make_layer_norm_metadata() -> (CircuitParams, Architecture, WANDB) {
         n_bits_config: HashMap::new(),
         weights_as_inputs: false,
         proof_system: ProofSystem::Expander,
-        curve: None,
+        proof_config: None,
         logup_chunk_bits: Some(12),
     };
 
@@ -730,7 +730,7 @@ fn make_averagepool_metadata() -> (CircuitParams, Architecture, WANDB) {
         n_bits_config: HashMap::new(),
         weights_as_inputs: false,
         proof_system: ProofSystem::Expander,
-        curve: None,
+        proof_config: None,
         logup_chunk_bits: Some(12),
     };
 
@@ -874,7 +874,7 @@ fn make_conv_transpose_metadata() -> (CircuitParams, Architecture, WANDB) {
         n_bits_config: HashMap::new(),
         weights_as_inputs: false,
         proof_system: ProofSystem::Expander,
-        curve: None,
+        proof_config: None,
         logup_chunk_bits: Some(12),
     };
 
