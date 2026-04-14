@@ -72,9 +72,10 @@ pub fn pow_hint<F: FieldArith>(inputs: &[F], outputs: &mut [F]) -> Result<(), Er
     } else if y_scaled <= i64::MIN as f64 {
         i64::MIN
     } else if y_scaled.is_nan() || y_scaled.is_infinite() {
-        return Err(Error::UserError(format!(
-            "pow_hint: invalid result for base={x_i64} exponent={exp_i64} (NaN or Inf)"
-        )));
+        // NaN arises for 0^0 or for a negative base with a fractional exponent
+        // (e.g. (-2)^1.5 is undefined over the reals). In both cases we map to 1.0
+        // (the fixed-point encoding of the identity element for multiplication).
+        scale_u64 as i64
     } else {
         y_scaled.round() as i64
     };
@@ -171,6 +172,34 @@ mod tests {
         assert!(
             (result - expected).abs() <= 2,
             "(-2)^3: got {result}, expected {expected}"
+        );
+    }
+
+    #[test]
+    fn pow_zero_zero() {
+        // 0^0 → 0.0_f64.powf(0.0) = NaN → fallback to 1.0 (scale_u64 as i64)
+        let scale: u64 = 1 << 18;
+        let x_q = 0i64;
+        let exp_q = 0i64;
+        let result = run_hint(x_q, exp_q, scale);
+        assert_eq!(
+            result, scale as i64,
+            "0^0: expected 1.0 encoded as {}, got {result}",
+            scale
+        );
+    }
+
+    #[test]
+    fn pow_negative_fractional_exponent() {
+        // (-2)^0.5 → (-2.0_f64).powf(0.5) = NaN → fallback to 1.0 (scale_u64 as i64)
+        let scale: u64 = 1 << 18;
+        let x_q = -2 * scale as i64;
+        let exp_q = scale as i64 / 2; // 0.5 in fixed-point
+        let result = run_hint(x_q, exp_q, scale);
+        assert_eq!(
+            result, scale as i64,
+            "(-2)^0.5: expected 1.0 encoded as {}, got {result}",
+            scale
         );
     }
 }

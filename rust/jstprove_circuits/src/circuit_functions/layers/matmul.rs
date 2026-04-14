@@ -602,6 +602,9 @@ mod tests {
 
     #[test]
     fn freivalds_single_row_not_beneficial() {
+        // ell=1: d = 2*(m+n+m*n) - (m+2), and for tiny matrices it is still
+        // too costly even when positive.
+        // For m=n=1: cost_full=1, s=3, d=3, 1*3=3 > 1 -> not beneficial.
         assert!(!freivalds_cheaper(1, 1, 1, 1));
     }
 

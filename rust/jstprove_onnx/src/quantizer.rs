@@ -329,7 +329,7 @@ fn compute_max_bound_inner(graph: &LayerGraph) -> Result<f64> {
     // default alpha for Log-layer bound propagation (ln(2^18) ≈ 12.47).
     let default_alpha_f64 = (DEFAULT_SCALE_BASE as f64).powi(DEFAULT_SCALE_EXPONENT as i32);
 
-    let shapes = propagate_shapes(graph);
+    let shapes = propagate_shapes(graph)?;
 
     for name in &graph.input_names {
         bounds.insert(name.clone(), 1.0);
@@ -413,7 +413,7 @@ fn broadcast_two(a: &[usize], b: &[usize]) -> Vec<usize> {
 ///
 /// This is used by `compute_bounds` so that reduction ops (e.g. ReduceSum)
 /// can account for the actual number of elements being accumulated.
-fn propagate_shapes(graph: &LayerGraph) -> HashMap<String, Vec<usize>> {
+fn propagate_shapes(graph: &LayerGraph) -> Result<HashMap<String, Vec<usize>>> {
     let mut shapes: HashMap<String, Vec<usize>> = HashMap::new();
 
     // Seed with model-level input shapes.
@@ -542,45 +542,124 @@ fn propagate_shapes(graph: &LayerGraph) -> HashMap<String, Vec<usize>> {
                             layer.attributes.get("allowzero"),
                             Some(AttrValue::Int(v)) if *v != 0
                         );
-                        let in_shape: &[usize] = input_shape.as_deref().unwrap_or(&[]);
-                        let input_total: usize = in_shape.iter().product();
+                        // Keep the source shape optional so "no
+                        // shape traced yet" is distinct from "empty
+                        // tensor".  input_total is None when ANY
+                        // source dim is unknown; a 0-dim source
+                        // with allowzero=true still gives Some(0).
+                        let in_shape: Option<&[usize]> = input_shape.as_deref();
+                        let input_total: Option<usize> =
+                            in_shape.map(|s| s.iter().product::<usize>());
 
-                        let mut dims: Vec<Option<usize>> = raw
-                            .iter()
-                            .enumerate()
-                            .map(|(i, &d)| {
-                                if d == 0 {
-                                    if allowzero {
-                                        Some(0)
-                                    } else {
-                                        Some(in_shape.get(i).copied().unwrap_or(0))
-                                    }
-                                } else if d > 0 {
-                                    Some(d as usize)
+                        // First pass: resolve fixed dims; leave
+                        // infer / unknown-copy cases as None so a
+                        // later pass can tell them apart from a
+                        // genuine 0.
+                        let mut dims: Vec<Option<usize>> = Vec::with_capacity(raw.len());
+                        for (i, &d) in raw.iter().enumerate() {
+                            if d == 0 {
+                                if allowzero {
+                                    dims.push(Some(0));
                                 } else {
-                                    None // -1 only
-                                }
-                            })
-                            .collect();
-
-                        // Infer the single -1 dimension when input total is known.
-                        if input_total > 0 {
-                            let n_unknown = dims.iter().filter(|d| d.is_none()).count();
-                            if n_unknown == 1 {
-                                let known: usize = dims.iter().filter_map(|&d| d).product();
-                                if known > 0 {
-                                    let inferred = input_total / known;
-                                    for d in &mut dims {
-                                        if d.is_none() {
-                                            *d = Some(inferred);
-                                            break;
-                                        }
+                                    // Copy the source dim only when
+                                    // that dim is actually known.
+                                    // Falling back to 0 here would
+                                    // silently conflate "unknown"
+                                    // with "empty" and produce an
+                                    // empty tensor for a reshape
+                                    // whose source shape the shape
+                                    // tracer couldn't model.
+                                    match in_shape.and_then(|s| s.get(i).copied()) {
+                                        Some(v) => dims.push(Some(v)),
+                                        None => dims.push(None),
                                     }
                                 }
+                            } else if d > 0 {
+                                dims.push(Some(d as usize));
+                            } else if d == -1 {
+                                dims.push(None); // infer sentinel
+                            } else {
+                                anyhow::bail!(
+                                    "Reshape layer '{}': invalid dimension {} at index {} (only -1 is a valid infer sentinel)",
+                                    layer.name, d, i
+                                );
                             }
                         }
 
-                        dims.into_iter().map(|d| d.unwrap_or(0)).collect()
+                        // Infer or validate dimensions based on how
+                        // many are unknown.  Bail on any unresolved
+                        // case rather than silently producing an
+                        // empty tensor.
+                        let n_unknown = dims.iter().filter(|d| d.is_none()).count();
+                        if n_unknown > 1 {
+                            anyhow::bail!(
+                                "Reshape layer '{}': more than one -1 / unresolved-copy dimension is not allowed",
+                                layer.name
+                            );
+                        }
+                        if n_unknown == 1 {
+                            if let Some(total) = input_total {
+                                let known: usize = dims.iter().filter_map(|&d| d).product();
+                                if known == 0 {
+                                    anyhow::bail!(
+                                        "Reshape layer '{}': cannot infer -1 dimension when known product is 0",
+                                        layer.name
+                                    );
+                                }
+                                if total % known != 0 {
+                                    anyhow::bail!(
+                                        "Reshape layer '{}': input total {} is not divisible by known dims product {}",
+                                        layer.name,
+                                        total,
+                                        known
+                                    );
+                                }
+                                let inferred = total / known;
+                                for d in &mut dims {
+                                    if d.is_none() {
+                                        *d = Some(inferred);
+                                        break;
+                                    }
+                                }
+                            } else {
+                                anyhow::bail!(
+                                    "Reshape layer '{}': cannot infer -1 / copy dimension because the input total element count is unknown",
+                                    layer.name
+                                );
+                            }
+                        } else if let Some(total) = input_total {
+                            // n_unknown == 0: every output dim is
+                            // fixed, so the target element count
+                            // is determined.  Validate against the
+                            // source total when known; skip the
+                            // check when unknown rather than
+                            // failing closed (shape tracing uses
+                            // best-effort fallbacks for ops it
+                            // does not fully model, so input_total
+                            // can be stale or wrong for valid
+                            // models).
+                            let target_total: usize = dims.iter().filter_map(|&d| d).product();
+                            if target_total != total {
+                                anyhow::bail!(
+                                    "Reshape layer '{}': target total element count {} does not match input total {}",
+                                    layer.name,
+                                    target_total,
+                                    total
+                                );
+                            }
+                        }
+
+                        // All None should be resolved by now; any remaining None is an error.
+                        dims.into_iter()
+                            .map(|d| {
+                                d.ok_or_else(|| {
+                                    anyhow::anyhow!(
+                                        "Reshape layer '{}': could not infer -1 / copy dimension because the input shape is unknown",
+                                        layer.name
+                                    )
+                                })
+                            })
+                            .collect::<Result<Vec<usize>>>()?
                     } else {
                         input_shape.unwrap_or_default()
                     }
@@ -1144,7 +1223,7 @@ fn propagate_shapes(graph: &LayerGraph) -> HashMap<String, Vec<usize>> {
         }
     }
 
-    shapes
+    Ok(shapes)
 }
 
 fn compute_bounds(graph: &LayerGraph, config: &ScaleConfig) -> Result<HashMap<String, usize>> {
@@ -1153,7 +1232,7 @@ fn compute_bounds(graph: &LayerGraph, config: &ScaleConfig) -> Result<HashMap<St
     let mut n_bits_config = HashMap::new();
 
     // Pre-compute tensor shapes for reduction-size estimation.
-    let shapes = propagate_shapes(graph);
+    let shapes = propagate_shapes(graph)?;
 
     for name in &graph.input_names {
         bounds.insert(name.clone(), 1.0);

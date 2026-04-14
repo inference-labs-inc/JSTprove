@@ -1,129 +1,92 @@
 use std::path::Path;
-use std::time::Instant;
+use std::time::Duration;
+
+use criterion::{BatchSize, BenchmarkId, Criterion, criterion_group, criterion_main};
 
 use jstprove_circuits::expander_metadata;
 use jstprove_circuits::io::io_reader::onnx_context::OnnxContext;
-use jstprove_circuits::onnx::{compile_bn254, prove_bn254, verify_bn254, witness_bn254_from_f64};
-use jstprove_circuits::runner::main_runner::read_circuit_msgpack;
+use jstprove_circuits::onnx::compile_bn254;
 
-fn fmt(ms: f64) -> String {
-    if ms >= 1000.0 {
-        format!("{:.2}s", ms / 1000.0)
-    } else {
-        format!("{ms:.1}ms")
+fn clear_autotuner_cache() {
+    if let Some(dir) = std::env::var("HOME").ok().map(|h| {
+        let base = if cfg!(target_os = "macos") {
+            std::path::PathBuf::from(&h).join("Library/Caches")
+        } else {
+            std::env::var("XDG_CACHE_HOME")
+                .ok()
+                .map(std::path::PathBuf::from)
+                .unwrap_or_else(|| std::path::PathBuf::from(&h).join(".cache"))
+        };
+        base.join("jstprove/chunk_width")
+    }) {
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
 
-fn run_pipeline(
-    model_path: &Path,
-    label: &str,
-    activations: &[f64],
-    logup_chunk_bits: Option<usize>,
-) {
-    let t_setup = Instant::now();
-    let metadata = expander_metadata::generate_from_onnx(model_path).unwrap();
-    let mut params = metadata.circuit_params.clone();
-    params.logup_chunk_bits = logup_chunk_bits;
-    OnnxContext::set_all(metadata.architecture, params.clone(), Some(metadata.wandb));
-    let setup_ms = t_setup.elapsed().as_secs_f64() * 1000.0;
-
-    let chunk_label = match logup_chunk_bits {
-        Some(b) => format!("chunk_bits={b}"),
-        None => "adaptive".to_string(),
-    };
-    println!("\n--- {label} ({chunk_label}) ---");
-    println!("setup:   {:>10}", fmt(setup_ms));
-
-    let tmp = tempfile::TempDir::new().unwrap();
-    let circuit_path = tmp.path().join("circuit.bundle");
-    let circuit_path_str = circuit_path.to_str().unwrap();
-
-    let t = Instant::now();
-    compile_bn254(circuit_path_str, false, Some(params.clone())).unwrap();
-    let compile_ms = t.elapsed().as_secs_f64() * 1000.0;
-    println!("compile: {:>10}", fmt(compile_ms));
-
-    let bundle = read_circuit_msgpack(circuit_path_str).unwrap();
-    println!(
-        "circuit: {:>10}",
-        format!("{:.1} KiB", bundle.circuit.len() as f64 / 1024.0)
-    );
-
-    let t = Instant::now();
-    let wb = witness_bn254_from_f64(
-        &bundle.circuit,
-        &bundle.witness_solver,
-        &params,
-        activations,
-        &[],
-        false,
-    )
-    .unwrap();
-    let witness_ms = t.elapsed().as_secs_f64() * 1000.0;
-    println!("witness: {:>10}", fmt(witness_ms));
-
-    let t = Instant::now();
-    let proof = prove_bn254(&bundle.circuit, &wb.witness, false).unwrap();
-    let prove_ms = t.elapsed().as_secs_f64() * 1000.0;
-    println!("prove:   {:>10}", fmt(prove_ms));
-    println!(
-        "proof:   {:>10}",
-        format!("{:.1} KiB", proof.len() as f64 / 1024.0)
-    );
-
-    let t = Instant::now();
-    assert!(verify_bn254(&bundle.circuit, &wb.witness, &proof).unwrap());
-    let verify_ms = t.elapsed().as_secs_f64() * 1000.0;
-    println!("verify:  {:>10}", fmt(verify_ms));
-
-    println!(
-        "total:   {:>10}",
-        fmt(compile_ms + witness_ms + prove_ms + verify_ms)
-    );
-}
-
-fn bench_model(model_name: &str) {
+fn bench_compile_chunk_bits(c: &mut Criterion) {
+    let model_name = std::env::var("MODEL").unwrap_or_else(|_| "lenet".to_string());
     let model_file = format!("{model_name}.onnx");
     let model_path = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../jstprove_remainder/models")
         .join(&model_file);
     if !model_path.exists() {
-        println!("SKIP {model_file}: not found at {}", model_path.display());
         return;
     }
 
     let metadata = expander_metadata::generate_from_onnx(&model_path).unwrap();
-    let params = metadata.circuit_params.clone();
-    let num_act: usize = params
-        .inputs
-        .iter()
-        .map(|io| io.shape.iter().product::<usize>())
-        .sum();
-    let activations: Vec<f64> = (0..num_act).map(|i| i as f64 / num_act as f64).collect();
+    let params_base = metadata.circuit_params.clone();
+    let arch = metadata.architecture.clone();
+    let wandb = metadata.wandb.clone();
 
-    println!("\n{}", "=".repeat(60));
-    println!("MODEL: {model_file}");
-    println!("{}", "=".repeat(60));
+    let mut group = c.benchmark_group("logup_chunking");
+    group.sample_size(10);
+    group.measurement_time(Duration::from_secs(120));
 
-    run_pipeline(&model_path, model_name, &activations, Some(10));
-    run_pipeline(&model_path, model_name, &activations, None);
-    for c in [11, 12, 13, 14] {
-        run_pipeline(&model_path, model_name, &activations, Some(c));
+    for chunk_bits in [Some(10usize), Some(11), Some(12), Some(13), Some(14), None] {
+        // Include both the model name and the chunk width so IDs are unique across MODEL runs.
+        let label = match chunk_bits {
+            Some(b) => format!("{model_name}/chunk_bits_{b}"),
+            None => format!("{model_name}/adaptive"),
+        };
+
+        let mut params_it = params_base.clone();
+        params_it.logup_chunk_bits = chunk_bits;
+        let arch_it = arch.clone();
+        let wandb_it = wandb.clone();
+        let is_adaptive = chunk_bits.is_none();
+
+        group.bench_with_input(BenchmarkId::new("compile", &label), &label, |b, _| {
+            b.iter_batched(
+                || {
+                    // For the adaptive (None) case the autotuner sweeps and caches the result.
+                    // Clear the cache in the setup so every measured iteration starts cold and
+                    // produces a comparable result to the fixed-width Some(_) runs.
+                    if is_adaptive {
+                        clear_autotuner_cache();
+                    }
+                    OnnxContext::set_all(
+                        arch_it.clone(),
+                        params_it.clone(),
+                        Some(wandb_it.clone()),
+                    );
+                    tempfile::TempDir::new().unwrap()
+                },
+                |tmp| {
+                    let path = tmp
+                        .path()
+                        .join("circuit.bundle")
+                        .to_str()
+                        .unwrap()
+                        .to_string();
+                    compile_bn254(&path, false, Some(params_it.clone())).unwrap();
+                },
+                BatchSize::PerIteration,
+            );
+        });
     }
+
+    group.finish();
 }
 
-fn main() {
-    let models: Vec<String> = if let Ok(m) = std::env::var("MODEL") {
-        m.split(',')
-            .map(str::trim)
-            .filter(|s| !s.is_empty())
-            .map(str::to_string)
-            .collect()
-    } else {
-        vec!["lenet".to_string(), "mini_resnet".to_string()]
-    };
-
-    for model in &models {
-        bench_model(model);
-    }
-}
+criterion_group!(chunking_benches, bench_compile_chunk_bits);
+criterion_main!(chunking_benches);

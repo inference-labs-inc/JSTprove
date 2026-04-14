@@ -469,7 +469,10 @@ pub fn query_count_hint<F: Field>(inputs: &[F], outputs: &mut [F]) -> Result<(),
     for input in inputs {
         let query_id = input.to_u256().as_usize();
         if query_id >= count.len() {
-            return Err(Error::InternalError("query_id out of bounds".into()));
+            return Err(Error::InternalError(format!(
+                "query_id out of bounds: query_id={query_id}, table_len={}",
+                count.len()
+            )));
         }
         count[query_id] += 1;
     }

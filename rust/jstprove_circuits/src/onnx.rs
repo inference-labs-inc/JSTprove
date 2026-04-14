@@ -594,63 +594,25 @@ pub fn witness_from_f64_generic<C: Config>(
         )));
     }
 
-    let layered_circuit = load_circuit_from_bytes::<C>(circuit_bytes)?;
-    let witness_solver = load_witness_solver_from_bytes::<C>(solver_bytes)?;
-    let hint_registry = build_logup_hint_registry::<CircuitField<C>>();
     let num_outputs = params.effective_output_dims();
 
     let mut assignment = Circuit::<CircuitField<C>> {
-        input_arr: input_arr.clone(),
+        input_arr,
         outputs: vec![CircuitField::<C>::zero(); num_outputs],
         ..Default::default()
     };
-    assignment.dummy[0] = CircuitField::<C>::from(1u32);
-    assignment.dummy[1] = CircuitField::<C>::from(1u32);
-    assignment.scale_base[0] = CircuitField::<C>::from(params.scale_base);
-    assignment.scale_exponent[0] = CircuitField::<C>::from(params.scale_exponent);
+    // Stamp dummy / scale_base / scale_exponent through the
+    // shared helper so the two witness paths agree on probe-slot
+    // initialisation; doing it inline duplicated the contract.
+    init_circuit_fields::<C>(&mut assignment, params);
 
-    let probe_witness = witness_solver
-        .solve_witness_with_hints(&assignment, &hint_registry)
-        .map_err(|e| RunError::Witness(format!("probe pass: {e:?}")))?;
-
-    let (private_inputs, public_inputs) = probe_witness
-        .iter_scalar()
-        .next()
-        .ok_or_else(|| RunError::Witness("empty probe witness".into()))?;
-
-    let (actual_outputs, _) =
-        layered_circuit.eval_with_public_inputs(private_inputs, &public_inputs);
-
-    if actual_outputs.len() < num_outputs {
-        return Err(RunError::Witness(format!(
-            "circuit actual outputs length {}: expected at least {num_outputs} (expected_num_output_zeroes={}, num_actual_outputs={})",
-            actual_outputs.len(),
-            layered_circuit.expected_num_output_zeroes,
-            layered_circuit.num_actual_outputs,
-        )));
-    }
-
-    let computed_outputs: Vec<CircuitField<C>> = actual_outputs[..num_outputs].to_vec();
-
-    assignment.input_arr = input_arr;
-    let output_i64: Vec<i64> = computed_outputs
-        .iter()
-        .map(|v| crate::circuit_functions::hints::field_to_i64(*v))
-        .collect();
-
-    assignment.outputs = computed_outputs;
-
-    let witness = witness_solver
-        .solve_witness_with_hints(&assignment, &hint_registry)
-        .map_err(|e| RunError::Witness(format!("final pass: {e:?}")))?;
-
-    let witness_bytes = serialize_witness::<C>(&witness, compress)?;
-
-    Ok(WitnessBundle {
-        witness: witness_bytes,
-        output_data: Some(output_i64),
-        version: Some(crate::runner::version::jstprove_artifact_version()),
-    })
+    solve_two_pass_witness::<C>(
+        circuit_bytes,
+        solver_bytes,
+        assignment,
+        num_outputs,
+        compress,
+    )
 }
 
 /// Builds a quantized assignment from raw f64 activations with auto-computed outputs.
@@ -713,6 +675,122 @@ pub fn build_debug_assignment<C: Config>(
     assignment.outputs = actual_outputs[..num_outputs].to_vec();
 
     Ok(assignment)
+}
+
+/// Generate a witness from pre-quantized integer inputs (e.g. from input.msgpack).
+///
+/// Unlike [`witness_from_f64_generic`], this function does NOT apply alpha scaling
+/// to the inputs — they are already quantized `i64` values that map directly to
+/// circuit field elements via [`crate::circuit_functions::utils::tensor_ops::convert_val_to_field_element`].
+///
+/// # Errors
+/// Returns `RunError` on witness generation, serialization, or activation mismatch.
+pub fn witness_from_prequantized<C: Config>(
+    circuit_bytes: &[u8],
+    solver_bytes: &[u8],
+    params: &CircuitParams,
+    input_data: &InputData,
+    compress: bool,
+) -> Result<WitnessBundle, RunError> {
+    let num_outputs = params.effective_output_dims();
+
+    // Build assignment with pre-quantized inputs (no alpha
+    // re-scaling); outputs start at zero for the probe pass.
+    let mut probe_assignment =
+        apply_input_data::<C>(input_data, Circuit::<CircuitField<C>>::default(), params)?;
+    probe_assignment.outputs = vec![CircuitField::<C>::zero(); num_outputs];
+
+    solve_two_pass_witness::<C>(
+        circuit_bytes,
+        solver_bytes,
+        probe_assignment,
+        num_outputs,
+        compress,
+    )
+}
+
+/// Shared two-pass witness driver used by both
+/// `witness_from_f64_generic` (f64 inputs alpha-quantised inline)
+/// and `witness_from_prequantized` (pre-quantised i64 inputs via
+/// apply_input_data).  The caller hands in a fully-prepared probe
+/// assignment -- all inputs set, outputs zeroed to the expected
+/// length, any dummy / scale slots initialised.  This helper then:
+///
+///   * loads the circuit / witness solver / hint registry once,
+///   * runs the probe pass to compute the circuit outputs,
+///   * checks the actual-output count matches the manifest,
+///   * converts the outputs to the i64 wire form for the
+///     WitnessBundle,
+///   * writes the computed outputs back into the assignment,
+///   * runs the final solve pass,
+///   * serialises the witness and stamps the artefact version.
+///
+/// Keeping this logic in one place means the two callers cannot
+/// drift in output-length checks, error phrasing, or version
+/// stamping, and future additions to the two-pass contract (e.g.
+/// new assignment slots) land once rather than in N copies.
+fn solve_two_pass_witness<C: Config>(
+    circuit_bytes: &[u8],
+    solver_bytes: &[u8],
+    mut assignment: Circuit<CircuitField<C>>,
+    num_outputs: usize,
+    compress: bool,
+) -> Result<WitnessBundle, RunError> {
+    // Fail fast if the caller handed in a probe assignment whose
+    // output slot count doesn't match the circuit's manifest.  The
+    // probe solver would otherwise surface the same mismatch much
+    // later as an opaque shape error from inside the hint handler.
+    if assignment.outputs.len() != num_outputs {
+        return Err(RunError::Witness(format!(
+            "probe assignment output slots {} do not match manifest num_outputs {num_outputs}",
+            assignment.outputs.len()
+        )));
+    }
+
+    let layered_circuit = load_circuit_from_bytes::<C>(circuit_bytes)?;
+    let witness_solver = load_witness_solver_from_bytes::<C>(solver_bytes)?;
+    let hint_registry = build_logup_hint_registry::<CircuitField<C>>();
+
+    let probe_witness = witness_solver
+        .solve_witness_with_hints(&assignment, &hint_registry)
+        .map_err(|e| RunError::Witness(format!("probe pass: {e:?}")))?;
+
+    let (private_inputs, public_inputs) = probe_witness
+        .iter_scalar()
+        .next()
+        .ok_or_else(|| RunError::Witness("empty probe witness".into()))?;
+
+    let (actual_outputs, _) =
+        layered_circuit.eval_with_public_inputs(private_inputs, &public_inputs);
+
+    if actual_outputs.len() < num_outputs {
+        return Err(RunError::Witness(format!(
+            "circuit actual outputs length {}: expected at least {num_outputs} (expected_num_output_zeroes={}, num_actual_outputs={})",
+            actual_outputs.len(),
+            layered_circuit.expected_num_output_zeroes,
+            layered_circuit.num_actual_outputs,
+        )));
+    }
+
+    let computed_outputs: Vec<CircuitField<C>> = actual_outputs[..num_outputs].to_vec();
+    let output_i64: Vec<i64> = computed_outputs
+        .iter()
+        .map(|v| crate::circuit_functions::hints::field_to_i64(*v))
+        .collect();
+
+    assignment.outputs = computed_outputs;
+
+    let witness = witness_solver
+        .solve_witness_with_hints(&assignment, &hint_registry)
+        .map_err(|e| RunError::Witness(format!("final pass: {e:?}")))?;
+
+    let witness_bytes = serialize_witness::<C>(&witness, compress)?;
+
+    Ok(WitnessBundle {
+        witness: witness_bytes,
+        output_data: Some(output_i64),
+        version: Some(crate::runner::version::jstprove_artifact_version()),
+    })
 }
 
 /// # Errors

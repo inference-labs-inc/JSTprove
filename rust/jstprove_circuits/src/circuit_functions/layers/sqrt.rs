@@ -1,3 +1,11 @@
+// Elementwise ONNX `Sqrt` layer for int64 fixed-point tensors.
+//
+// # ZK approach
+// 1. **Hint**: computes sqrt(x_q / scale) * scale in native f64.
+// 2. **Input non-negativity check**: constrains x to [0, 2^n_bits), which
+//    enforces x >= 0 before invoking the hint.
+// 3. **Output range check**: constrains sqrt result to [0, 2^n_bits).
+
 use std::collections::HashMap;
 
 use ethnum::U256;
@@ -44,8 +52,10 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for SqrtLayer {
         let mut out_storage: Vec<Variable> = Vec::with_capacity(x_input.len());
 
         for &x in x_input {
+            // Prove x >= 0 before invoking the hint.  Without this constraint a
+            // dishonest prover could supply a negative x; the hint clamps it to
+            // 0 and the output range-check still passes, creating a false proof.
             logup_ctx.range_check::<C, Builder>(api, x, n_bits)?;
-
             let hint_out = api.new_hint(SQRT_HINT_KEY, &[x, scale_var], 1);
             let y = hint_out[0];
 

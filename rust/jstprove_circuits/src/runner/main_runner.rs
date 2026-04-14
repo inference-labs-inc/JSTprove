@@ -1049,15 +1049,11 @@ pub fn run_witness_from_inputs<C: Config>(
     let input_data: crate::circuit_functions::utils::onnx_model::InputData =
         rmp_serde::from_slice(&raw).map_err(|e| RunError::Deserialize(format!("{e}")))?;
 
-    let mut activations = Vec::new();
-    flatten_rmpv_to_f64(&input_data.input, &mut activations)?;
-
-    let wb = crate::onnx::witness_from_f64_generic::<C>(
+    let wb = crate::onnx::witness_from_prequantized::<C>(
         &bundle.circuit,
         &bundle.witness_solver,
         &params,
-        &activations,
-        &[],
+        &input_data,
         compress,
     )?;
 
@@ -1077,38 +1073,6 @@ pub fn run_witness_from_inputs<C: Config>(
         path: output_path.into(),
     })?;
 
-    Ok(())
-}
-
-fn flatten_rmpv_to_f64(val: &Value, out: &mut Vec<f64>) -> Result<(), RunError> {
-    match val {
-        Value::Integer(n) => {
-            let v = n
-                .as_f64()
-                .ok_or_else(|| RunError::Deserialize("msgpack: expected number".into()))?;
-            if let Some(i) = n.as_i64() {
-                const MAX_EXACT: i64 = 1_i64 << 53;
-                if !(-MAX_EXACT..=MAX_EXACT).contains(&i) {
-                    return Err(RunError::Deserialize(format!(
-                        "msgpack: integer {i} exceeds f64 exact range (±2^53)"
-                    )));
-                }
-            }
-            out.push(v);
-        }
-        Value::F32(f) => out.push(f64::from(*f)),
-        Value::F64(f) => out.push(*f),
-        Value::Array(arr) => {
-            for v in arr {
-                flatten_rmpv_to_f64(v, out)?;
-            }
-        }
-        _ => {
-            return Err(RunError::Deserialize(
-                "msgpack: input must contain numbers or arrays".into(),
-            ));
-        }
-    }
     Ok(())
 }
 
@@ -1827,6 +1791,58 @@ fn natural_key_cmp(a: &str, b: &str) -> std::cmp::Ordering {
         .cmp(b_prefix)
         .then_with(|| a_num.cmp(&b_num))
         .then_with(|| a.cmp(b))
+}
+
+fn flatten_rmpv_to_f64(val: &Value, out: &mut Vec<f64>) -> Result<(), RunError> {
+    match val {
+        Value::Array(arr) => {
+            for item in arr {
+                flatten_rmpv_to_f64(item, out)?;
+            }
+            Ok(())
+        }
+        Value::Map(entries) => {
+            let mut pairs: Vec<_> = entries
+                .iter()
+                .filter_map(|(k, v)| k.as_str().map(|s| (s.to_string(), v)))
+                .collect();
+            pairs.sort_by(|(a, _), (b, _)| natural_key_cmp(a, b));
+            for (_, v) in pairs {
+                flatten_rmpv_to_f64(v, out)?;
+            }
+            Ok(())
+        }
+        Value::Integer(n) => {
+            let i = n
+                .as_i64()
+                .ok_or_else(|| RunError::Deserialize("integer value out of i64 range".into()))?;
+            out.push(i as f64);
+            Ok(())
+        }
+        Value::F64(f) => {
+            if f.is_finite() {
+                out.push(*f);
+                Ok(())
+            } else {
+                Err(RunError::Deserialize(
+                    "non-finite f64 value in input".into(),
+                ))
+            }
+        }
+        Value::F32(f) => {
+            if f.is_finite() {
+                out.push(f64::from(*f));
+                Ok(())
+            } else {
+                Err(RunError::Deserialize(
+                    "non-finite f32 value in input".into(),
+                ))
+            }
+        }
+        other => Err(RunError::Deserialize(format!(
+            "unsupported input value type for debug assignment: {other:?}"
+        ))),
+    }
 }
 
 #[allow(clippy::cast_precision_loss, clippy::cast_possible_truncation)]
