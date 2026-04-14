@@ -102,7 +102,7 @@ openssl = { version = "0.10", features = ["vendored"] }
 peakmem-alloc = "0.3.0"
 proc-macro2 = "1.0"
 quote = "1.0"
-rand = "0.8.5"
+rand = "0.10.0"
 rand_chacha = "0.3.1"
 raw-cpuid = "11.1.0"
 rayon = "1.10.0"
