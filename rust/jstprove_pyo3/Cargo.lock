@@ -125,7 +125,7 @@ dependencies = [
  "halo2curves 0.6.1 (git+https://github.com/PolyhedraZK/halo2curves)",
  "itertools 0.13.0",
  "log",
- "rand 0.8.5",
+ "rand 0.10.0",
  "serdes",
  "tynm",
 ]
@@ -469,7 +469,7 @@ dependencies = [
  "arith",
  "ark-std 0.4.0",
  "ethnum",
- "rand 0.8.5",
+ "rand 0.10.0",
  "serdes",
 ]
 
@@ -598,7 +598,7 @@ dependencies = [
  "cc",
  "cfg-if",
  "constant_time_eq",
- "cpufeatures",
+ "cpufeatures 0.2.17",
  "digest 0.10.7",
 ]
 
@@ -670,6 +670,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9330f8b2ff13f34540b44e946ef35111825727b38d33286ef986142615121801"
 
 [[package]]
+name = "chacha20"
+version = "0.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6f8d983286843e49675a4b7a2d174efe136dc93a18d69130dd18198a6c167601"
+dependencies = [
+ "cfg-if",
+ "cpufeatures 0.3.0",
+ "rand_core 0.10.0",
+]
+
+[[package]]
 name = "chrono"
 version = "0.4.44"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -720,7 +731,7 @@ dependencies = [
  "gkr_engine",
  "gkr_hashers",
  "log",
- "rand 0.8.5",
+ "rand 0.10.0",
  "serdes",
  "thiserror 2.0.18",
  "transcript",
@@ -746,7 +757,7 @@ dependencies = [
  "mersenne31",
  "num-bigint",
  "num-traits",
- "rand 0.8.5",
+ "rand 0.10.0",
  "serdes",
  "sha2",
  "tiny-keccak",
@@ -884,6 +895,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "cpufeatures"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8b2a41393f66f16b0823bb79094d54ac5fbd34ab292ddafb9a0456ac9f87d201"
+dependencies = [
+ "libc",
+]
+
+[[package]]
 name = "crc32c"
 version = "0.6.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -973,7 +993,7 @@ dependencies = [
  "gkr_hashers",
  "log",
  "polynomials",
- "rand 0.8.5",
+ "rand 0.10.0",
  "serdes",
  "sumcheck",
  "thiserror 2.0.18",
@@ -1233,7 +1253,7 @@ dependencies = [
  "once_cell",
  "poly_commit",
  "polynomials",
- "rand 0.8.5",
+ "rand 0.10.0",
  "rayon",
  "reqwest",
  "serde",
@@ -1481,7 +1501,7 @@ dependencies = [
  "ethnum",
  "halo2curves 0.6.1 (git+https://github.com/PolyhedraZK/halo2curves)",
  "log",
- "rand 0.8.5",
+ "rand 0.10.0",
  "raw-cpuid",
  "serdes",
  "thiserror 2.0.18",
@@ -1495,7 +1515,7 @@ dependencies = [
  "ark-std 0.4.0",
  "ethnum",
  "gf2",
- "rand 0.8.5",
+ "rand 0.10.0",
  "serdes",
 ]
 
@@ -1520,7 +1540,7 @@ dependencies = [
  "mersenne31",
  "poly_commit",
  "polynomials",
- "rand 0.8.5",
+ "rand 0.10.0",
  "rayon",
  "serdes",
  "sha2",
@@ -1543,7 +1563,7 @@ dependencies = [
  "itertools 0.13.0",
  "mersenne31",
  "polynomials",
- "rand 0.8.5",
+ "rand 0.10.0",
  "serdes",
  "thiserror 2.0.18",
 ]
@@ -1566,7 +1586,7 @@ dependencies = [
  "arith",
  "ark-std 0.4.0",
  "ethnum",
- "rand 0.8.5",
+ "rand 0.10.0",
  "serdes",
 ]
 
@@ -2307,6 +2327,7 @@ dependencies = [
  "arith",
  "ark-std 0.4.0",
  "chrono",
+ "circuit",
  "circuit-std-rs",
  "clap",
  "console 0.15.11",
@@ -2314,6 +2335,7 @@ dependencies = [
  "expander_compiler",
  "gkr",
  "gkr_engine",
+ "goldilocks",
  "halo2curves 0.6.1 (git+https://github.com/PolyhedraZK/halo2curves)",
  "indicatif",
  "jstprove-io",
@@ -2324,19 +2346,24 @@ dependencies = [
  "num-traits",
  "once_cell",
  "openssl",
- "rand 0.8.5",
+ "poly_commit",
+ "polynomials",
+ "rand 0.10.0",
  "rayon",
  "rmp-serde",
  "rmpv",
  "serde",
  "serde_bytes",
  "serde_json",
+ "serdes",
  "strum",
  "strum_macros",
+ "sumcheck",
  "tempfile",
  "thiserror 2.0.18",
  "tiny-keccak",
  "tracing",
+ "transcript",
  "zstd",
 ]
 
@@ -2346,7 +2373,7 @@ version = "0.1.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cb26cec98cce3a3d96cbb7bced3c4b16e3d13f27ec56dbd62cbc8f39cfb9d653"
 dependencies = [
- "cpufeatures",
+ "cpufeatures 0.2.17",
 ]
 
 [[package]]
@@ -2507,7 +2534,7 @@ dependencies = [
  "gkr_hashers",
  "halo2curves 0.6.1 (git+https://github.com/PolyhedraZK/halo2curves)",
  "log",
- "rand 0.8.5",
+ "rand 0.10.0",
  "raw-cpuid",
  "serdes",
  "thiserror 2.0.18",
@@ -3021,7 +3048,7 @@ dependencies = [
  "halo2curves 0.6.1 (git+https://github.com/PolyhedraZK/halo2curves)",
  "itertools 0.13.0",
  "polynomials",
- "rand 0.8.5",
+ "rand 0.10.0",
  "rayon",
  "serdes",
  "sha2",
@@ -3042,7 +3069,7 @@ dependencies = [
  "criterion",
  "halo2curves 0.6.1 (git+https://github.com/PolyhedraZK/halo2curves)",
  "itertools 0.13.0",
- "rand 0.8.5",
+ "rand 0.10.0",
  "serdes",
 ]
 
@@ -3311,6 +3338,7 @@ version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bc266eb313df6c5c09c1c7b1fbe2510961e5bcd3add930c1e31f7ed9da0feff8"
 dependencies = [
+ "chacha20",
  "getrandom 0.4.2",
  "rand_core 0.10.0",
 ]
@@ -3750,7 +3778,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e3bf829a2d51ab4a5ddf1352d8470c140cadc8301b2ae1789db023f01cedd6ba"
 dependencies = [
  "cfg-if",
- "cpufeatures",
+ "cpufeatures 0.2.17",
  "digest 0.10.7",
 ]
 
@@ -3761,7 +3789,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a7507d819769d01a365ab707794a4084392c824f54a7a6a7862f8c3d0892b283"
 dependencies = [
  "cfg-if",
- "cpufeatures",
+ "cpufeatures 0.2.17",
  "digest 0.10.7",
 ]
 
