@@ -587,11 +587,9 @@ fn propagate_shapes(graph: &LayerGraph) -> Result<HashMap<String, Vec<usize>>> {
                         }
 
                         // Infer or validate dimensions based on how
-                        // many are unknown, but only when the source
-                        // shape is fully known -- otherwise the
-                        // arithmetic below would treat a None-total
-                        // as zero and silently produce an empty
-                        // tensor.
+                        // many are unknown.  Bail on any unresolved
+                        // case rather than silently producing an
+                        // empty tensor.
                         let n_unknown = dims.iter().filter(|d| d.is_none()).count();
                         if n_unknown > 1 {
                             anyhow::bail!(
@@ -599,34 +597,57 @@ fn propagate_shapes(graph: &LayerGraph) -> Result<HashMap<String, Vec<usize>>> {
                                 layer.name
                             );
                         }
-                        if let (1, Some(total)) = (n_unknown, input_total)
-                            && total > 0
-                        {
-                            let known: usize = dims.iter().filter_map(|&d| d).product();
-                            if known == 0 {
+                        if n_unknown == 1 {
+                            if let Some(total) = input_total {
+                                let known: usize = dims.iter().filter_map(|&d| d).product();
+                                if known == 0 {
+                                    anyhow::bail!(
+                                        "Reshape layer '{}': cannot infer -1 dimension when known product is 0",
+                                        layer.name
+                                    );
+                                }
+                                if total % known != 0 {
+                                    anyhow::bail!(
+                                        "Reshape layer '{}': input total {} is not divisible by known dims product {}",
+                                        layer.name,
+                                        total,
+                                        known
+                                    );
+                                }
+                                let inferred = total / known;
+                                for d in &mut dims {
+                                    if d.is_none() {
+                                        *d = Some(inferred);
+                                        break;
+                                    }
+                                }
+                            } else {
                                 anyhow::bail!(
-                                    "Reshape layer '{}': cannot infer -1 dimension when known product is 0",
+                                    "Reshape layer '{}': cannot infer -1 / copy dimension because the input total element count is unknown",
                                     layer.name
                                 );
                             }
-                            if total % known != 0 {
+                        } else if let Some(total) = input_total {
+                            // n_unknown == 0: every output dim is
+                            // fixed, so the target element count
+                            // is determined.  Validate against the
+                            // source total when known; skip the
+                            // check when unknown rather than
+                            // failing closed (shape tracing uses
+                            // best-effort fallbacks for ops it
+                            // does not fully model, so input_total
+                            // can be stale or wrong for valid
+                            // models).
+                            let target_total: usize = dims.iter().filter_map(|&d| d).product();
+                            if target_total != total {
                                 anyhow::bail!(
-                                    "Reshape layer '{}': input total {total} is not divisible by known dims product {known}"
+                                    "Reshape layer '{}': target total element count {} does not match input total {}",
+                                    layer.name,
+                                    target_total,
+                                    total
                                 );
                             }
-                            let inferred = total / known;
-                            for d in &mut dims {
-                                if d.is_none() {
-                                    *d = Some(inferred);
-                                    break;
-                                }
-                            }
                         }
-                        // n_unknown == 0: all dimensions are fixed.
-                        // n_unknown == 1 with unknown source:
-                        // surface below as an explicit error rather
-                        // than guessing a dimension from an
-                        // unknown total.
 
                         // All None should be resolved by now; any remaining None is an error.
                         dims.into_iter()

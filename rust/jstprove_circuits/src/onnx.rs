@@ -601,10 +601,10 @@ pub fn witness_from_f64_generic<C: Config>(
         outputs: vec![CircuitField::<C>::zero(); num_outputs],
         ..Default::default()
     };
-    assignment.dummy[0] = CircuitField::<C>::from(1u32);
-    assignment.dummy[1] = CircuitField::<C>::from(1u32);
-    assignment.scale_base[0] = CircuitField::<C>::from(params.scale_base);
-    assignment.scale_exponent[0] = CircuitField::<C>::from(params.scale_exponent);
+    // Stamp dummy / scale_base / scale_exponent through the
+    // shared helper so the two witness paths agree on probe-slot
+    // initialisation; doing it inline duplicated the contract.
+    init_circuit_fields::<C>(&mut assignment, params);
 
     solve_two_pass_witness::<C>(
         circuit_bytes,
@@ -736,6 +736,17 @@ fn solve_two_pass_witness<C: Config>(
     num_outputs: usize,
     compress: bool,
 ) -> Result<WitnessBundle, RunError> {
+    // Fail fast if the caller handed in a probe assignment whose
+    // output slot count doesn't match the circuit's manifest.  The
+    // probe solver would otherwise surface the same mismatch much
+    // later as an opaque shape error from inside the hint handler.
+    if assignment.outputs.len() != num_outputs {
+        return Err(RunError::Witness(format!(
+            "probe assignment output slots {} do not match manifest num_outputs {num_outputs}",
+            assignment.outputs.len()
+        )));
+    }
+
     let layered_circuit = load_circuit_from_bytes::<C>(circuit_bytes)?;
     let witness_solver = load_witness_solver_from_bytes::<C>(solver_bytes)?;
     let hint_registry = build_logup_hint_registry::<CircuitField<C>>();
