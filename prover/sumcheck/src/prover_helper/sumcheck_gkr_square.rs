@@ -172,14 +172,39 @@ impl<'a, F: FieldEngine, const D: usize> SumcheckGkrSquareHelper<'a, F, D> {
 
     #[inline]
     pub(crate) fn prepare_mpi(&mut self) {
-        // TODO: No need to evaluate it at all world ranks, remove redundancy later.
-        EqPolynomial::<F::ChallengeField>::eq_eval_at(
-            &self.challenge.r_mpi,
-            &F::ChallengeField::one(),
-            &mut self.sp.eq_evals_at_r_mpi0,
-            &mut self.sp.eq_evals_first_half,
-            &mut self.sp.eq_evals_second_half,
-        );
+        if self.mpi_config.is_root() {
+            EqPolynomial::<F::ChallengeField>::eq_eval_at(
+                &self.challenge.r_mpi,
+                &F::ChallengeField::one(),
+                &mut self.sp.eq_evals_at_r_mpi0,
+                &mut self.sp.eq_evals_first_half,
+                &mut self.sp.eq_evals_second_half,
+            );
+        }
+        if !self.mpi_config.is_single_process() {
+            let elem_size = std::mem::size_of::<F::ChallengeField>();
+            let byte_len = self.sp.eq_evals_at_r_mpi0.len() * elem_size;
+            let mut bytes = vec![0u8; byte_len];
+            if self.mpi_config.is_root() {
+                unsafe {
+                    std::ptr::copy_nonoverlapping(
+                        self.sp.eq_evals_at_r_mpi0.as_ptr() as *const u8,
+                        bytes.as_mut_ptr(),
+                        byte_len,
+                    );
+                }
+            }
+            self.mpi_config.root_broadcast_bytes(&mut bytes);
+            if !self.mpi_config.is_root() {
+                unsafe {
+                    std::ptr::copy_nonoverlapping(
+                        bytes.as_ptr(),
+                        self.sp.eq_evals_at_r_mpi0.as_mut_ptr() as *mut u8,
+                        byte_len,
+                    );
+                }
+            }
+        }
     }
 
     #[inline]

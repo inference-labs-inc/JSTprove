@@ -37,7 +37,7 @@ pub fn sumcheck_prove_gkr_layer<F: FieldEngine, T: Transcript>(
         SumcheckGkrVanillaHelper::new(layer, challenge, alpha, sp, mpi_config, is_output_layer);
 
     helper.prepare_simd();
-    helper.prepare_mpi();
+    helper.prepare_mpi(mpi_config);
 
     #[cfg(all(target_os = "macos", feature = "metal"))]
     let used_metal_x = helper.try_metal_xy_rounds(transcript, mpi_config);
