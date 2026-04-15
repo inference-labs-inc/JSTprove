@@ -1,0 +1,23 @@
+[package]
+name = "jstprove-conformance"
+version.workspace = true
+edition = "2021"
+
+[dependencies]
+anyhow = "1"
+thiserror = { workspace = true }
+log = { workspace = true }
+env_logger = { workspace = true }
+tempfile = "3"
+prost = "0.13"
+jstprove-onnx = { path = "../jstprove_onnx" }
+jstprove_circuits = { path = "../jstprove_circuits" }
+tract-onnx = "0.21"
+
+[dev-dependencies]
+env_logger = { workspace = true }
+
+[[test]]
+name = "conformance"
+path = "tests/conformance.rs"
+harness = true
