@@ -13,7 +13,7 @@
 ```
 ---
 
-# JSTprove
+# JSTprove: Community Edition
 
 [![GitHub](https://img.shields.io/badge/GitHub-Repository-blue?style=flat-square&logo=github)](https://github.com/inference-labs-inc/JSTprove)
 [![Telegram](https://img.shields.io/badge/Telegram-Join%20Channel-0088cc?style=flat-square&logo=telegram)](https://t.me/inference_labs)
