@@ -2411,6 +2411,8 @@ dependencies = [
  "jstprove_circuits",
  "log",
  "prost 0.13.5",
+ "rand 0.8.5",
+ "rand_chacha",
  "tempfile",
  "thiserror 2.0.18",
  "tract-onnx",

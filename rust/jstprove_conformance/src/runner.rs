@@ -3,6 +3,7 @@ use std::io::Write as _;
 use crate::tolerance::Tolerance;
 
 /// A single named test case ready to run.
+#[derive(Clone)]
 pub struct TestCase {
     pub op_name: &'static str,
     /// Seed used to generate this case — included in failure messages for reproducibility.

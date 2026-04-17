@@ -1,3 +1,4 @@
+pub mod generator;
 pub mod onnx_builder;
 pub mod runner;
 pub mod tolerance;

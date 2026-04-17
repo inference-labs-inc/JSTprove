@@ -10,6 +10,8 @@ log = { workspace = true }
 env_logger = { workspace = true }
 tempfile = "3"
 prost = "0.13"
+rand = { workspace = true }
+rand_chacha = { workspace = true }
 jstprove-onnx = { path = "../jstprove_onnx" }
 jstprove_circuits = { path = "../jstprove_circuits" }
 tract-onnx = "0.21"
