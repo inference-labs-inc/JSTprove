@@ -108,7 +108,7 @@ mod tests {
         let mut rng = ChaCha8Rng::seed_from_u64(0);
         let spec = ValueSpec::Uniform { lo: -100, hi: 100 };
         for v in spec.sample_tensor(500, &mut rng) {
-            assert!(v >= -100 && v <= 100, "uniform out of range: {v}");
+            assert!((-100..=100).contains(&v), "uniform out of range: {v}");
         }
     }
 
@@ -155,7 +155,7 @@ mod tests {
         let mut rng = ChaCha8Rng::seed_from_u64(5);
         let spec = ValueSpec::Indices { max: 10 };
         for v in spec.sample_tensor(200, &mut rng) {
-            assert!(v >= 0 && v < 10, "Index out of range: {v}");
+            assert!((0..10).contains(&v), "Index out of range: {v}");
         }
     }
 

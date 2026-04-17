@@ -161,6 +161,7 @@ fn first_dynamic_shape(sampled_shapes: &[Vec<usize>], dynamic_indices: &[usize])
 /// Strategy:
 /// 1. Try halving each input tensor's values element-by-element.
 /// 2. Try replacing input tensors with shorter versions.
+///
 /// Stop after 50 shrink attempts. Return the smallest failing case found.
 pub fn shrink(original: &TestCase, runner: &ConformanceRunner) -> TestCase {
     const MAX_ATTEMPTS: usize = 50;

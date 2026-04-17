@@ -28,6 +28,7 @@ const BOOL: i32 = 9;
 // Internal helper
 // ---------------------------------------------------------------------------
 
+#[allow(clippy::too_many_arguments)]
 fn make_case(
     op_name: &'static str,
     seed: u64,
@@ -683,6 +684,7 @@ pub fn structural_cases() -> Vec<TestCase> {
 /// Mul, LeakyRelu, HardSwish are tested in `reference_only` mode because
 /// they require FLOAT (alpha-scaled) input semantics; full JSTProve
 /// comparison is deferred until FLOAT input handling is wired up.
+#[allow(clippy::vec_init_then_push)]
 pub fn arithmetic_cases() -> Vec<TestCase> {
     let mut cases = Vec::new();
 
@@ -798,6 +800,7 @@ pub fn arithmetic_cases() -> Vec<TestCase> {
 // Group C — Boolean / comparison ops
 // ---------------------------------------------------------------------------
 
+#[allow(clippy::vec_init_then_push)]
 pub fn boolean_cases() -> Vec<TestCase> {
     let mut cases = Vec::new();
 
@@ -889,6 +892,7 @@ pub fn boolean_cases() -> Vec<TestCase> {
 // Group D — Reduction ops
 // ---------------------------------------------------------------------------
 
+#[allow(clippy::vec_init_then_push)]
 pub fn reduction_cases() -> Vec<TestCase> {
     let mut cases = Vec::new();
 

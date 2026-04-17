@@ -44,14 +44,14 @@ pub struct Initializer {
 /// # Arguments
 /// * `op_type`      – ONNX op name, e.g. `"Relu"`, `"Add"`, `"Gemm"`
 /// * `input_shapes` – `(name, dims, elem_type)` for each graph input.
-///                    `elem_type` follows ONNX TensorProto.DataType: 1=FLOAT, 7=INT64.
-///                    Initializer-only inputs (weights) do not need entries here.
+///   `elem_type` follows ONNX TensorProto.DataType: 1=FLOAT, 7=INT64.
+///   Initializer-only inputs (weights) do not need entries here.
 /// * `output_name`  – name of the single output tensor
 /// * `attrs`        – ONNX attributes for the node
 /// * `initializers` – constant tensors baked into the graph (INT64 data)
 /// * `output_shapes` – `(name, dims, elem_type)` for each graph output.
-///                     **Must be specified** — JSTProve reads output shapes from the ONNX model
-///                     and cannot infer them at circuit-build time without this information.
+///   **Must be specified** — JSTProve reads output shapes from the ONNX model
+///   and cannot infer them at circuit-build time without this information.
 pub fn build_single_op_model(
     op_type: &str,
     input_shapes: &[(&str, &[i64], i32)],
@@ -91,13 +91,13 @@ pub fn build_single_op_model_ordered(
     // Build graph inputs (ValueInfoProto for each dynamic input)
     let graph_inputs: Vec<ValueInfoProto> = input_shapes
         .iter()
-        .map(|(name, dims, elem_type)| make_value_info(name, *dims, *elem_type))
+        .map(|(name, dims, elem_type)| make_value_info(name, dims, *elem_type))
         .collect();
 
     // Build graph outputs with explicit type/shape so JSTProve can read them
     let graph_outputs: Vec<ValueInfoProto> = output_shapes
         .iter()
-        .map(|(name, dims, elem_type)| make_value_info(name, *dims, *elem_type))
+        .map(|(name, dims, elem_type)| make_value_info(name, dims, *elem_type))
         .collect();
 
     // Build node attributes
