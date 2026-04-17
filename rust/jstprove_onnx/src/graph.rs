@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use anyhow::{bail, Result};
 
@@ -172,7 +173,7 @@ pub struct LayerNode {
     pub op_type: OpType,
     pub inputs: Vec<String>,
     pub outputs: Vec<String>,
-    pub weights: HashMap<String, TensorData>,
+    pub weights: HashMap<String, Arc<TensorData>>,
     pub attributes: HashMap<String, AttrValue>,
     pub output_shape: Vec<usize>,
     pub needs_rescale: bool,
@@ -193,12 +194,23 @@ impl LayerGraph {
         let initializer_names: std::collections::HashSet<&str> =
             model.initializers.keys().map(String::as_str).collect();
 
-        let mut constant_outputs: HashMap<String, TensorData> = HashMap::new();
+        // Wrap every initializer in Arc exactly once.  All layers that reference
+        // the same initializer (e.g. tied embeddings) will receive an Arc::clone
+        // (a ref-count bump) rather than an independent deep copy of the data.
+        let arc_initializers: HashMap<String, Arc<TensorData>> = model
+            .initializers
+            .iter()
+            .map(|(k, v)| (k.clone(), Arc::new(v.clone())))
+            .collect();
+
+        // Pre-populate outputs of inline Constant nodes so downstream layers
+        // can look them up as weights.
+        let mut constant_outputs: HashMap<String, Arc<TensorData>> = HashMap::new();
         for node in &model.nodes {
             if node.op_type == "Constant" {
                 if let Some(AttrValue::Tensor(td)) = node.attributes.get("value") {
                     for out_name in &node.outputs {
-                        constant_outputs.insert(out_name.clone(), td.clone());
+                        constant_outputs.insert(out_name.clone(), Arc::new(td.clone()));
                     }
                 }
             }
@@ -211,10 +223,10 @@ impl LayerGraph {
 
             let mut weights = HashMap::new();
             for input_name in &node.inputs {
-                if let Some(td) = model.initializers.get(input_name) {
-                    weights.insert(input_name.clone(), td.clone());
+                if let Some(td) = arc_initializers.get(input_name) {
+                    weights.insert(input_name.clone(), Arc::clone(td));
                 } else if let Some(td) = constant_outputs.get(input_name) {
-                    weights.insert(input_name.clone(), td.clone());
+                    weights.insert(input_name.clone(), Arc::clone(td));
                 }
             }
 
