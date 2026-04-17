@@ -68,13 +68,13 @@ impl ShapeSpec {
         for _ in 0..rank {
             let lo = self.min_dim;
             let hi = self.max_dim;
-            let d = if lo == hi {
-                lo
-            } else {
-                rng.gen_range(lo..=hi)
-            };
+            let d = if lo == hi { lo } else { rng.gen_range(lo..=hi) };
             // Occasionally produce singleton dimensions when allowed
-            let d = if self.allow_singleton && rng.gen_bool(0.15) { 1 } else { d };
+            let d = if self.allow_singleton && rng.gen_bool(0.15) {
+                1
+            } else {
+                d
+            };
             shape.push(d.max(lo));
         }
 
@@ -157,15 +157,15 @@ pub fn incompatible_pair(rng: &mut impl Rng) -> (Vec<usize>, Vec<usize>) {
 /// Returns a fixed set of shapes that exercise known edge cases.
 pub fn edge_case_shapes() -> Vec<Vec<usize>> {
     vec![
-        vec![],          // scalar
-        vec![1],         // singleton vector
-        vec![4],         // simple vector
-        vec![1, 4],      // row vector
-        vec![4, 1],      // column vector
-        vec![1, 1],      // scalar-like matrix
-        vec![3, 4],      // plain matrix
-        vec![2, 3, 4],   // 3-D tensor
-        vec![1, 1, 4],   // broadcast-friendly 3-D
+        vec![],           // scalar
+        vec![1],          // singleton vector
+        vec![4],          // simple vector
+        vec![1, 4],       // row vector
+        vec![4, 1],       // column vector
+        vec![1, 1],       // scalar-like matrix
+        vec![3, 4],       // plain matrix
+        vec![2, 3, 4],    // 3-D tensor
+        vec![1, 1, 4],    // broadcast-friendly 3-D
         vec![2, 3, 4, 5], // 4-D tensor
     ]
 }
@@ -173,14 +173,18 @@ pub fn edge_case_shapes() -> Vec<Vec<usize>> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rand_chacha::ChaCha8Rng;
     use rand::SeedableRng;
+    use rand_chacha::ChaCha8Rng;
 
     #[test]
     fn scalar_has_rank_zero() {
         let mut rng = ChaCha8Rng::seed_from_u64(0);
         let shape = ShapeSpec::SCALAR.sample(&mut rng);
-        assert_eq!(shape, Vec::<usize>::new(), "SCALAR must produce rank-0 shape");
+        assert_eq!(
+            shape,
+            Vec::<usize>::new(),
+            "SCALAR must produce rank-0 shape"
+        );
     }
 
     #[test]
@@ -226,7 +230,10 @@ mod tests {
             let mut rng = ChaCha8Rng::seed_from_u64(99);
             ShapeSpec::MATRIX.sample(&mut rng)
         };
-        assert_eq!(shape_a, shape_b, "sample must be deterministic for same seed");
+        assert_eq!(
+            shape_a, shape_b,
+            "sample must be deterministic for same seed"
+        );
     }
 
     #[test]

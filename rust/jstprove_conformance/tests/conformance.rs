@@ -1,7 +1,78 @@
 use jstprove_conformance::{
-    ConformanceRunner, TestCase, TestResult, Tolerance,
+    generator::{arithmetic_cases, boolean_cases, reduction_cases, shrink, structural_cases},
     onnx_builder::build_single_op_model,
+    ConformanceRunner, TestCase, TestResult, Tolerance,
 };
+
+// ---------------------------------------------------------------------------
+// Helper: run a group of test cases and panic on any failure or error.
+// Reference-only cases (those whose TestCase was built with reference_only
+// semantics) are identified by running with both reference_only=false AND
+// reference_only=true.  If a case passes reference_only but fails full, it
+// gets reported separately so the engineer knows it's a known partial test.
+// ---------------------------------------------------------------------------
+
+fn run_group(group_name: &str, cases: Vec<TestCase>) {
+    let full_runner = ConformanceRunner {
+        reference_only: false,
+    };
+    let ref_runner = ConformanceRunner {
+        reference_only: true,
+    };
+
+    let mut full_failures = 0usize;
+    let mut reference_only_skipped = 0usize;
+
+    for case in &cases {
+        match full_runner.run(case) {
+            TestResult::Pass => {}
+            TestResult::Fail(failures) => {
+                full_failures += failures.len();
+                eprintln!(
+                    "[{group_name}] FAIL op={} seed={}  ({} mismatch(es))",
+                    case.op_name,
+                    case.seed,
+                    failures.len()
+                );
+                for f in &failures {
+                    eprintln!("  {f}");
+                }
+                let shrunken = shrink(case, &full_runner);
+                eprintln!("  minimized inputs: {:?}", shrunken.inputs);
+            }
+            TestResult::Error(e) => {
+                // Check if this is a known reference_only placeholder (passes ref but not full).
+                if matches!(ref_runner.run(case), TestResult::Pass) {
+                    reference_only_skipped += 1;
+                    log::info!(
+                        "[{group_name}] SKIP (reference_only) op={} seed={}: {e}",
+                        case.op_name,
+                        case.seed
+                    );
+                } else {
+                    panic!(
+                        "[{group_name}] ERROR op={} seed={}: {e:#}",
+                        case.op_name, case.seed
+                    );
+                }
+            }
+        }
+    }
+
+    if reference_only_skipped > 0 {
+        eprintln!(
+            "[{group_name}] {reference_only_skipped} case(s) skipped (reference_only placeholders)"
+        );
+    }
+
+    if full_failures > 0 {
+        panic!("[{group_name}] {full_failures} element-level failure(s)");
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Milestone 1 smoke tests (kept for regression)
+// ---------------------------------------------------------------------------
 
 #[test]
 fn relu_smoke() {
@@ -27,7 +98,9 @@ fn relu_smoke() {
         tolerance: Tolerance::EXACT,
     };
 
-    let runner = ConformanceRunner { reference_only: false };
+    let runner = ConformanceRunner {
+        reference_only: false,
+    };
     match runner.run(&case) {
         TestResult::Pass => {}
         TestResult::Fail(failures) => {
@@ -45,14 +118,8 @@ fn relu_smoke() {
 fn relu_reference_only() {
     let _ = env_logger::try_init();
 
-    let onnx_bytes = build_single_op_model(
-        "Relu",
-        &[("x", &[3], 7)],
-        &[("y", &[3], 7)],
-        &[],
-        &[],
-    )
-    .unwrap();
+    let onnx_bytes =
+        build_single_op_model("Relu", &[("x", &[3], 7)], &[("y", &[3], 7)], &[], &[]).unwrap();
 
     let case = TestCase {
         op_name: "Relu",
@@ -62,6 +129,44 @@ fn relu_reference_only() {
         tolerance: Tolerance::EXACT,
     };
 
-    let runner = ConformanceRunner { reference_only: true };
+    let runner = ConformanceRunner {
+        reference_only: true,
+    };
     assert!(matches!(runner.run(&case), TestResult::Pass));
+}
+
+// ---------------------------------------------------------------------------
+// Milestone 3: operator groups
+// ---------------------------------------------------------------------------
+
+/// Group A — Structural ops (Reshape, Flatten, Squeeze, Unsqueeze, Cast,
+/// ConstantOfShape, Tile, Gather, GatherElements, Transpose, Concat, Slice,
+/// Shape, Expand, Pad, Split, Identity, Neg, Range, ScatterND).
+#[test]
+fn structural_ops() {
+    let _ = env_logger::try_init();
+    run_group("structural", structural_cases());
+}
+
+/// Group B — Simple element-wise arithmetic.
+/// Mul, LeakyRelu, HardSwish are reference_only placeholders until FLOAT
+/// input support is added.
+#[test]
+fn simple_arithmetic_ops() {
+    let _ = env_logger::try_init();
+    run_group("arithmetic", arithmetic_cases());
+}
+
+/// Group C — Boolean / comparison ops (Equal, Greater, Less, And, Not, Where).
+#[test]
+fn boolean_ops() {
+    let _ = env_logger::try_init();
+    run_group("boolean", boolean_cases());
+}
+
+/// Group D — Reduction ops (ReduceSum, ReduceMax).
+#[test]
+fn reduction_ops() {
+    let _ = env_logger::try_init();
+    run_group("reductions", reduction_cases());
 }

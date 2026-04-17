@@ -1,10 +1,9 @@
 use prost::Message;
 
 use jstprove_onnx::{
-    AttributeProto, GraphProto, ModelProto, NodeProto, OperatorSetIdProto, TensorProto,
-    TensorShapeProto, TypeProto, ValueInfoProto,
     tensor_shape_proto::{self, dimension},
-    type_proto,
+    type_proto, AttributeProto, GraphProto, ModelProto, NodeProto, OperatorSetIdProto, TensorProto,
+    TensorShapeProto, TypeProto, ValueInfoProto,
 };
 
 /// An attribute value for a single-op ONNX node.
@@ -15,6 +14,13 @@ pub enum AttrValue {
     Ints(Vec<i64>),
     Floats(Vec<f32>),
     String(Vec<u8>),
+    /// A tensor value (for `Constant` node's `value` attribute, `ConstantOfShape`'s `value`, etc.)
+    /// All data stored as INT64.
+    Tensor {
+        dims: Vec<i64>,
+        data_type: i32,
+        int64_data: Vec<i64>,
+    },
 }
 
 /// A named node attribute.
@@ -53,7 +59,34 @@ pub fn build_single_op_model(
     attrs: &[NodeAttr],
     initializers: &[Initializer],
 ) -> anyhow::Result<Vec<u8>> {
-    anyhow::ensure!(!output_shapes.is_empty(), "build_single_op_model: output_shapes must not be empty");
+    build_single_op_model_ordered(
+        op_type,
+        input_shapes,
+        output_shapes,
+        attrs,
+        initializers,
+        &[],
+    )
+}
+
+/// Like `build_single_op_model` but with an explicit `node_input_order` slice that
+/// overrides the default node-input ordering (dynamic inputs first, then initializers).
+/// Pass `&[]` to use the default ordering.
+///
+/// This is needed for ops like ScatterND where ONNX requires `[data, indices, updates]`
+/// but `indices` is a compile-time initializer and `updates` is a dynamic input.
+pub fn build_single_op_model_ordered(
+    op_type: &str,
+    input_shapes: &[(&str, &[i64], i32)],
+    output_shapes: &[(&str, &[i64], i32)],
+    attrs: &[NodeAttr],
+    initializers: &[Initializer],
+    node_input_order: &[&str],
+) -> anyhow::Result<Vec<u8>> {
+    anyhow::ensure!(
+        !output_shapes.is_empty(),
+        "build_single_op_model: output_shapes must not be empty"
+    );
 
     // Build graph inputs (ValueInfoProto for each dynamic input)
     let graph_inputs: Vec<ValueInfoProto> = input_shapes
@@ -70,14 +103,22 @@ pub fn build_single_op_model(
     // Build node attributes
     let node_attrs: Vec<AttributeProto> = attrs.iter().map(make_attribute).collect();
 
-    // Node inputs = dynamic inputs + initializer names
-    let mut node_inputs: Vec<String> = input_shapes.iter().map(|(n, _, _)| n.to_string()).collect();
-    for init in initializers {
-        node_inputs.push(init.name.to_string());
-    }
+    // Node inputs: use explicit ordering if provided, else dynamic inputs + initializer names
+    let node_inputs: Vec<String> = if node_input_order.is_empty() {
+        let mut v: Vec<String> = input_shapes.iter().map(|(n, _, _)| n.to_string()).collect();
+        for init in initializers {
+            v.push(init.name.to_string());
+        }
+        v
+    } else {
+        node_input_order.iter().map(|s| s.to_string()).collect()
+    };
 
     // Node outputs = all declared outputs
-    let node_outputs: Vec<String> = output_shapes.iter().map(|(n, _, _)| n.to_string()).collect();
+    let node_outputs: Vec<String> = output_shapes
+        .iter()
+        .map(|(n, _, _)| n.to_string())
+        .collect();
 
     // Build the single op node
     let node = NodeProto {
@@ -172,6 +213,21 @@ fn make_attribute(attr: &NodeAttr) -> AttributeProto {
             s: Some(vs.clone()),
             ..Default::default()
         },
+        AttrValue::Tensor {
+            dims,
+            data_type,
+            int64_data,
+        } => AttributeProto {
+            name: Some(attr.name.to_string()),
+            r#type: Some(4), // TENSOR
+            t: Some(TensorProto {
+                dims: dims.clone(),
+                data_type: Some(*data_type),
+                int64_data: int64_data.clone(),
+                ..Default::default()
+            }),
+            ..Default::default()
+        },
     }
 }
 
@@ -191,13 +247,8 @@ mod tests {
 
     #[test]
     fn build_relu_model() {
-        let bytes = build_single_op_model(
-            "Relu",
-            &[("x", &[4], 7)],
-            &[("y", &[4], 7)],
-            &[],
-            &[],
-        ).unwrap();
+        let bytes =
+            build_single_op_model("Relu", &[("x", &[4], 7)], &[("y", &[4], 7)], &[], &[]).unwrap();
         assert!(!bytes.is_empty());
         // Should round-trip through prost decode
         let model = ModelProto::decode(bytes.as_slice()).unwrap();
@@ -229,8 +280,15 @@ mod tests {
             "Gather",
             &[("data", &[4, 3], 7)],
             &[("out", &[2, 3], 7)],
-            &[NodeAttr { name: "axis", value: AttrValue::Int(0) }],
-            &[Initializer { name: "indices", dims: vec![2], data: vec![0, 2] }],
+            &[NodeAttr {
+                name: "axis",
+                value: AttrValue::Int(0),
+            }],
+            &[Initializer {
+                name: "indices",
+                dims: vec![2],
+                data: vec![0, 2],
+            }],
         )
         .unwrap();
         let model = ModelProto::decode(bytes.as_slice()).unwrap();

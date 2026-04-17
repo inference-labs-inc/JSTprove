@@ -1,5 +1,7 @@
 use std::io::Write as _;
 
+use prost::Message as _;
+
 use crate::tolerance::Tolerance;
 
 /// A single named test case ready to run.
@@ -139,6 +141,62 @@ impl ConformanceRunner {
 }
 
 // ---------------------------------------------------------------------------
+// ONNX model introspection helpers
+// ---------------------------------------------------------------------------
+
+/// Information about a single ONNX graph input.
+struct OnnxInputInfo {
+    /// elem_type: 9=BOOL, 7=INT64, 1=FLOAT, etc.
+    elem_type: i32,
+    /// Concrete shape (all dims must be known; empty = scalar).
+    shape: Vec<usize>,
+}
+
+/// Parse input type and shape info from serialised ONNX model bytes.
+fn onnx_input_info(onnx_bytes: &[u8]) -> Vec<OnnxInputInfo> {
+    use jstprove_onnx::{tensor_shape_proto::dimension, ModelProto};
+    let Ok(model) = ModelProto::decode(onnx_bytes) else {
+        return vec![];
+    };
+    let Some(graph) = model.graph else {
+        return vec![];
+    };
+    graph
+        .input
+        .iter()
+        .map(|vi| {
+            let tt = vi
+                .r#type
+                .as_ref()
+                .and_then(|t| t.value.as_ref())
+                .and_then(|v| match v {
+                    jstprove_onnx::type_proto::Value::TensorType(tt) => Some(tt),
+                    _ => None,
+                });
+            let elem_type = tt.and_then(|t| t.elem_type).unwrap_or(7);
+            let shape = tt
+                .and_then(|t| t.shape.as_ref())
+                .map(|s| {
+                    s.dim
+                        .iter()
+                        .map(|d| {
+                            d.value
+                                .as_ref()
+                                .and_then(|v| match v {
+                                    dimension::Value::DimValue(n) => Some(*n as usize),
+                                    _ => None,
+                                })
+                                .unwrap_or(1)
+                        })
+                        .collect::<Vec<_>>()
+                })
+                .unwrap_or_default();
+            OnnxInputInfo { elem_type, shape }
+        })
+        .collect()
+}
+
+// ---------------------------------------------------------------------------
 // tract reference backend
 // ---------------------------------------------------------------------------
 
@@ -155,24 +213,72 @@ fn run_tract(case: &TestCase) -> anyhow::Result<Vec<i64>> {
         .into_optimized()?
         .into_runnable()?;
 
-    // Build input tensors from i64 values
+    // Read input type/shape info from the ONNX model.
+    // Comparison ops (Equal, Greater, Less, And, Not) use BOOL (9) typed inputs.
+    // Multi-dim inputs (e.g. [4, 2]) need to be reshaped from the flat Vec<i64>.
+    let input_info = onnx_input_info(&case.onnx_bytes);
+
+    // Build input tensors — reshape to expected shape and cast to Bool when needed.
     let inputs: TVec<TValue> = case
         .inputs
         .iter()
-        .map(|vals| -> anyhow::Result<TValue> {
-            let arr =
-                tract_ndarray::Array1::from_vec(vals.clone()).into_dyn();
-            Ok(Tensor::from(arr).into())
+        .enumerate()
+        .map(|(idx, vals)| -> anyhow::Result<TValue> {
+            let info = input_info.get(idx);
+            let elem_type = info.map(|i| i.elem_type).unwrap_or(7);
+            let shape = info.map(|i| i.shape.as_slice()).unwrap_or(&[]);
+            let ix_dyn = tract_ndarray::IxDyn(shape);
+
+            if elem_type == 9
+            /* BOOL */
+            {
+                let bools: Vec<bool> = vals.iter().map(|&v| v != 0).collect();
+                let arr = if shape.is_empty() {
+                    tract_ndarray::Array1::from_vec(bools).into_dyn()
+                } else {
+                    tract_ndarray::ArrayD::from_shape_vec(ix_dyn, bools)
+                        .map_err(|e| anyhow::anyhow!("Bool reshape failed: {e}"))?
+                };
+                Ok(Tensor::from(arr).into())
+            } else {
+                let arr = if shape.is_empty() {
+                    tract_ndarray::Array1::from_vec(vals.clone()).into_dyn()
+                } else {
+                    tract_ndarray::ArrayD::from_shape_vec(ix_dyn, vals.clone())
+                        .map_err(|e| anyhow::anyhow!("I64 reshape failed: {e}"))?
+                };
+                Ok(Tensor::from(arr).into())
+            }
         })
         .collect::<anyhow::Result<_>>()?;
 
     let outputs = model.run(inputs)?;
 
-    // Flatten all output tensors to a single Vec<i64>
+    // Flatten all output tensors to a single Vec<i64>.
+    // Handle BOOL outputs from comparison ops by casting true→1, false→0.
     let mut result = Vec::new();
     for out in outputs.iter() {
-        let view = out.to_array_view::<i64>()?;
-        result.extend(view.iter().copied());
+        if out.datum_type() == tract_onnx::prelude::DatumType::Bool {
+            let view = out.to_array_view::<bool>()?;
+            result.extend(view.iter().map(|&b| b as i64));
+        } else if out.datum_type() == tract_onnx::prelude::DatumType::I32 {
+            let view = out.to_array_view::<i32>()?;
+            result.extend(view.iter().map(|&v| v as i64));
+        } else if out.datum_type() == tract_onnx::prelude::DatumType::TDim {
+            // Shape and some structural ops return TDim (symbolic dimensions).
+            // All dims in our test cases are concrete, so to_i64() always succeeds.
+            use tract_onnx::prelude::TDim;
+            let view = out.to_array_view::<TDim>()?;
+            for tdim in view.iter() {
+                result.push(
+                    tdim.to_i64()
+                        .map_err(|e| anyhow::anyhow!("TDim::to_i64 failed: {e}"))?,
+                );
+            }
+        } else {
+            let view = out.to_array_view::<i64>()?;
+            result.extend(view.iter().copied());
+        }
     }
     Ok(result)
 }
@@ -196,9 +302,7 @@ fn run_jstprove(case: &TestCase) -> anyhow::Result<Vec<i64>> {
 
     // Compile circuit to a tempfile path
     // Use persist() so the file stays around for read_circuit_bundle
-    let circuit_tmp = tempfile::Builder::new()
-        .suffix(".msgpack")
-        .tempfile()?;
+    let circuit_tmp = tempfile::Builder::new().suffix(".msgpack").tempfile()?;
     let circuit_path = circuit_tmp.path().to_str().unwrap().to_string();
 
     api::compile(

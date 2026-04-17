@@ -139,9 +139,10 @@ pub fn gemm_spec(m: usize, k: usize, n: usize) -> OpInputSpec {
                 is_initializer: true,
             },
         ],
-        attrs: vec![
-            NodeAttr { name: "transB", value: AttrValue::Int(0) },
-        ],
+        attrs: vec![NodeAttr {
+            name: "transB",
+            value: AttrValue::Int(0),
+        }],
         needs_rescale: true,
         tolerance: Tolerance {
             abs: 1,

@@ -45,7 +45,11 @@ mod tests {
 
     #[test]
     fn abs_tolerance() {
-        let t = Tolerance { abs: 2, rel: 0.0, reason: "test" };
+        let t = Tolerance {
+            abs: 2,
+            rel: 0.0,
+            reason: "test",
+        };
         assert!(t.check(10, 11));
         assert!(t.check(10, 12));
         assert!(!t.check(10, 13));
@@ -53,7 +57,11 @@ mod tests {
 
     #[test]
     fn rel_tolerance() {
-        let t = Tolerance { abs: 0, rel: 0.1, reason: "test" };
+        let t = Tolerance {
+            abs: 0,
+            rel: 0.1,
+            reason: "test",
+        };
         assert!(t.check(100, 109)); // 9% — within 10%
         assert!(!t.check(100, 115)); // 15% — outside 10%
     }

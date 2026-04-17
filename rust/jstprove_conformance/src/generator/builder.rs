@@ -1,21 +1,21 @@
 use rand::SeedableRng;
 use rand_chacha::ChaCha8Rng;
 
+use super::op_specs::{split_initializers, OpInputSpec};
 use crate::onnx_builder::build_single_op_model;
 use crate::runner::{ConformanceRunner, TestCase, TestResult};
-use super::op_specs::{split_initializers, OpInputSpec};
 
 /// Default seed suite: a fixed set of seeds committed to the codebase.
 /// Covers baseline, adversarial shapes, boundary values, and extremes.
 /// Adding new seeds at the end is non-breaking; do NOT reorder or remove existing entries.
 pub const DEFAULT_SEEDS: &[u64] = &[
-    0,             // baseline
-    1,             // second baseline
-    42,            // historical "magic" seed
-    0xDEAD,        // large values
-    0xBEEF,        // edge shapes
-    0x1234_5678,   // mixed
-    u64::MAX,      // extreme seed
+    0,           // baseline
+    1,           // second baseline
+    42,          // historical "magic" seed
+    0xDEAD,      // large values
+    0xBEEF,      // edge shapes
+    0x1234_5678, // mixed
+    u64::MAX,    // extreme seed
     0xCAFE_BABE,
     0x0102_0304,
     0xFFFF_0000,
@@ -285,7 +285,10 @@ mod tests {
         let spec = relu_spec();
         let builder = TestCaseBuilder::new(spec);
         let case = builder.build_one(42);
-        assert!(!case.onnx_bytes.is_empty(), "onnx_bytes should not be empty");
+        assert!(
+            !case.onnx_bytes.is_empty(),
+            "onnx_bytes should not be empty"
+        );
         assert_eq!(case.op_name, "Relu");
     }
 
@@ -302,7 +305,9 @@ mod tests {
         let case = builder.build_one(0);
 
         // Use reference_only runner — always passes, so shrink can't find a "smaller failure"
-        let runner = ConformanceRunner { reference_only: true };
+        let runner = ConformanceRunner {
+            reference_only: true,
+        };
         let shrunken = shrink(&case, &runner);
 
         // shrink returns original when no failure is found

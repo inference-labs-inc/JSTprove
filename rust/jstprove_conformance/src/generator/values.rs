@@ -71,13 +71,7 @@ impl ValueSpec {
 
             ValueSpec::FractionalExponent => {
                 // Common fractional exponents in fixed-point: 1/4, 1/2, 3/4, 1, 2
-                let choices: &[i64] = &[
-                    ALPHA / 4,
-                    ALPHA / 2,
-                    (3 * ALPHA) / 4,
-                    ALPHA,
-                    2 * ALPHA,
-                ];
+                let choices: &[i64] = &[ALPHA / 4, ALPHA / 2, (3 * ALPHA) / 4, ALPHA, 2 * ALPHA];
                 choices[rng.gen_range(0..choices.len())]
             }
 
@@ -85,13 +79,17 @@ impl ValueSpec {
                 // 1/3 positive, 1/3 negative, 1/6 near-zero, 1/6 near-boundary
                 let (lo, hi) = SAFE_RANGE;
                 match rng.gen_range(0u8..6) {
-                    0 | 1 => rng.gen_range(1..=hi),      // positive
-                    2 | 3 => rng.gen_range(lo..=-1),     // negative
-                    4 => rng.gen_range(-8..=8),           // near zero
+                    0 | 1 => rng.gen_range(1..=hi),  // positive
+                    2 | 3 => rng.gen_range(lo..=-1), // negative
+                    4 => rng.gen_range(-8..=8),      // near zero
                     _ => {
                         let boundary = hi;
                         let delta: i64 = rng.gen_range(-4..=4);
-                        if rng.gen_bool(0.5) { boundary + delta } else { -boundary + delta }
+                        if rng.gen_bool(0.5) {
+                            boundary + delta
+                        } else {
+                            -boundary + delta
+                        }
                     }
                 }
             }
@@ -135,7 +133,9 @@ mod tests {
     #[test]
     fn near_zero_excludes_zero_when_requested() {
         let mut rng = ChaCha8Rng::seed_from_u64(3);
-        let spec = ValueSpec::NearZero { include_zero: false };
+        let spec = ValueSpec::NearZero {
+            include_zero: false,
+        };
         for v in spec.sample_tensor(200, &mut rng) {
             assert!(v != 0, "NearZero(include_zero=false) produced 0");
         }
@@ -166,7 +166,10 @@ mod tests {
         let boundary = SAFE_RANGE.1;
         for v in spec.sample_tensor(100, &mut rng) {
             let dist = (v.abs() - boundary).abs();
-            assert!(dist <= 4, "QuantizationBoundary too far from limit: {v}, boundary={boundary}");
+            assert!(
+                dist <= 4,
+                "QuantizationBoundary too far from limit: {v}, boundary={boundary}"
+            );
         }
     }
 
