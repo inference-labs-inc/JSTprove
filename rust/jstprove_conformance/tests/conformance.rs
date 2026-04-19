@@ -1,5 +1,8 @@
 use jstprove_conformance::{
-    generator::{arithmetic_cases, boolean_cases, reduction_cases, shrink, structural_cases},
+    generator::{
+        arithmetic_cases, boolean_cases, norm_cases, pooling_cases, reduction_cases,
+        rescaling_cases, shrink, spatial_cases, structural_cases, topk_cases, transcendental_cases,
+    },
     onnx_builder::build_single_op_model,
     ConformanceRunner, TestCase, TestResult, Tolerance,
 };
@@ -169,4 +172,51 @@ fn boolean_ops() {
 fn reduction_ops() {
     let _ = env_logger::try_init();
     run_group("reductions", reduction_cases());
+}
+
+// ---------------------------------------------------------------------------
+// Milestone 4: FLOAT-typed ops
+// ---------------------------------------------------------------------------
+
+/// Group E — Rescaling arithmetic ops (Gemm, MatMul, Conv, ConvTranspose, BatchNorm, Div, Pow).
+#[test]
+fn rescaling_arithmetic_ops() {
+    let _ = env_logger::try_init();
+    run_group("rescaling", rescaling_cases());
+}
+
+/// Group F — Transcendental/hint ops (Exp, Sigmoid, Softmax, Gelu, LayerNorm,
+/// Log, ReduceMean, Tanh, Erf, Sqrt, Cos, Sin).
+#[test]
+fn transcendental_ops() {
+    let _ = env_logger::try_init();
+    run_group("transcendental", transcendental_cases());
+}
+
+/// Group G — Pooling ops (AveragePool, GlobalAveragePool, MaxPool).
+#[test]
+fn pooling_ops() {
+    let _ = env_logger::try_init();
+    run_group("pooling", pooling_cases());
+}
+
+/// Group H — Normalization ops (InstanceNorm, GroupNorm — reference_only placeholders).
+#[test]
+fn norm_ops() {
+    let _ = env_logger::try_init();
+    run_group("norm", norm_cases());
+}
+
+/// Group I — Spatial ops (Resize, GridSample).
+#[test]
+fn spatial_ops() {
+    let _ = env_logger::try_init();
+    run_group("spatial", spatial_cases());
+}
+
+/// Group J — TopK.
+#[test]
+fn topk_ops() {
+    let _ = env_logger::try_init();
+    run_group("topk", topk_cases());
 }

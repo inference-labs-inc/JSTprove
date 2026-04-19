@@ -662,6 +662,7 @@ pub fn structural_cases() -> Vec<TestCase> {
                 data: vec![1, 3],
             }],
             &["data", "indices", "updates"],
+            &[],
         )
         .expect("build_single_op_model_ordered(ScatterND) failed");
         TestCase {

@@ -144,7 +144,7 @@ impl ConformanceRunner {
 // ONNX model introspection helpers
 // ---------------------------------------------------------------------------
 
-/// Information about a single ONNX graph input.
+/// Information about a single ONNX graph input or output.
 struct OnnxInputInfo {
     /// elem_type: 9=BOOL, 7=INT64, 1=FLOAT, etc.
     elem_type: i32,
@@ -154,6 +154,15 @@ struct OnnxInputInfo {
 
 /// Parse input type and shape info from serialised ONNX model bytes.
 fn onnx_input_info(onnx_bytes: &[u8]) -> Vec<OnnxInputInfo> {
+    parse_onnx_value_info(onnx_bytes, false)
+}
+
+/// Parse output type and shape info from serialised ONNX model bytes.
+fn onnx_output_info(onnx_bytes: &[u8]) -> Vec<OnnxInputInfo> {
+    parse_onnx_value_info(onnx_bytes, true)
+}
+
+fn parse_onnx_value_info(onnx_bytes: &[u8], is_output: bool) -> Vec<OnnxInputInfo> {
     use jstprove_onnx::{tensor_shape_proto::dimension, ModelProto};
     let Ok(model) = ModelProto::decode(onnx_bytes) else {
         return vec![];
@@ -161,8 +170,12 @@ fn onnx_input_info(onnx_bytes: &[u8]) -> Vec<OnnxInputInfo> {
     let Some(graph) = model.graph else {
         return vec![];
     };
-    graph
-        .input
+    let value_infos = if is_output {
+        &graph.output
+    } else {
+        &graph.input
+    };
+    value_infos
         .iter()
         .map(|vi| {
             let tt = vi
@@ -218,7 +231,7 @@ fn run_tract(case: &TestCase) -> anyhow::Result<Vec<i64>> {
     // Multi-dim inputs (e.g. [4, 2]) need to be reshaped from the flat Vec<i64>.
     let input_info = onnx_input_info(&case.onnx_bytes);
 
-    // Build input tensors — reshape to expected shape and cast to Bool when needed.
+    // Build input tensors — reshape to expected shape and cast to Bool/Float when needed.
     let inputs: TVec<TValue> = case
         .inputs
         .iter()
@@ -240,6 +253,19 @@ fn run_tract(case: &TestCase) -> anyhow::Result<Vec<i64>> {
                         .map_err(|e| anyhow::anyhow!("Bool reshape failed: {e}"))?
                 };
                 Ok(Tensor::from(arr).into())
+            } else if elem_type == 1
+            /* FLOAT */
+            {
+                // inputs are α-scaled i64; divide by α to get real f32 for tract
+                const ALPHA: f64 = 262144.0;
+                let floats: Vec<f32> = vals.iter().map(|&v| (v as f64 / ALPHA) as f32).collect();
+                let arr = if shape.is_empty() {
+                    tract_ndarray::Array1::from_vec(floats).into_dyn()
+                } else {
+                    tract_ndarray::ArrayD::<f32>::from_shape_vec(ix_dyn, floats)
+                        .map_err(|e| anyhow::anyhow!("F32 reshape failed: {e}"))?
+                };
+                Ok(Tensor::from(arr).into())
             } else {
                 let arr = if shape.is_empty() {
                     tract_ndarray::Array1::from_vec(vals.clone()).into_dyn()
@@ -256,8 +282,11 @@ fn run_tract(case: &TestCase) -> anyhow::Result<Vec<i64>> {
 
     // Flatten all output tensors to a single Vec<i64>.
     // Handle BOOL outputs from comparison ops by casting true→1, false→0.
+    // Handle FLOAT outputs by scaling to α-scaled i64.
+    const ALPHA: f64 = 262144.0;
+    let output_info = onnx_output_info(&case.onnx_bytes);
     let mut result = Vec::new();
-    for out in outputs.iter() {
+    for (out_idx, out) in outputs.iter().enumerate() {
         if out.datum_type() == tract_onnx::prelude::DatumType::Bool {
             let view = out.to_array_view::<bool>()?;
             result.extend(view.iter().map(|&b| b as i64));
@@ -275,9 +304,24 @@ fn run_tract(case: &TestCase) -> anyhow::Result<Vec<i64>> {
                         .map_err(|e| anyhow::anyhow!("TDim::to_i64 failed: {e}"))?,
                 );
             }
+        } else if out.datum_type() == tract_onnx::prelude::DatumType::F32 {
+            let view = out.to_array_view::<f32>()?;
+            result.extend(view.iter().map(|&v| (v as f64 * ALPHA).round() as i64));
+        } else if out.datum_type() == tract_onnx::prelude::DatumType::F64 {
+            let view = out.to_array_view::<f64>()?;
+            result.extend(view.iter().map(|&v| (v * ALPHA).round() as i64));
         } else {
-            let view = out.to_array_view::<i64>()?;
-            result.extend(view.iter().copied());
+            // Check if the ONNX graph output is FLOAT (elem_type=1) — if so, scale to α.
+            // This handles cases where tract coerces the output type.
+            let onnx_elem_type = output_info.get(out_idx).map(|i| i.elem_type).unwrap_or(7);
+            if onnx_elem_type == 1 {
+                // FLOAT output — try to read as f32 via generic path
+                let view = out.to_array_view::<f32>()?;
+                result.extend(view.iter().map(|&v| (v as f64 * ALPHA).round() as i64));
+            } else {
+                let view = out.to_array_view::<i64>()?;
+                result.extend(view.iter().copied());
+            }
         }
     }
     Ok(result)
@@ -296,24 +340,54 @@ fn run_jstprove(case: &TestCase) -> anyhow::Result<Vec<i64>> {
     onnx_tmp.write_all(&case.onnx_bytes)?;
     onnx_tmp.flush()?;
 
-    // Generate ONNX metadata (circuit params + architecture + weights)
-    let meta = api::generate_metadata(onnx_tmp.path())
-        .map_err(|e| anyhow::anyhow!("generate_metadata: {e}"))?;
+    // Generate ONNX metadata (circuit params + architecture + weights).
+    // Use catch_unwind since some internal code may panic rather than return errors.
+    let meta = {
+        let path = onnx_tmp.path().to_owned();
+        let result = std::panic::catch_unwind(|| api::generate_metadata(&path));
+        match result {
+            Ok(Ok(m)) => m,
+            Ok(Err(e)) => return Err(anyhow::anyhow!("generate_metadata: {e}")),
+            Err(panic_payload) => {
+                let msg = panic_payload
+                    .downcast_ref::<String>()
+                    .map(|s| s.as_str())
+                    .or_else(|| panic_payload.downcast_ref::<&str>().copied())
+                    .unwrap_or("unknown panic");
+                return Err(anyhow::anyhow!("generate_metadata (panic): {msg}"));
+            }
+        }
+    };
 
     // Compile circuit to a tempfile path
     // Use persist() so the file stays around for read_circuit_bundle
     let circuit_tmp = tempfile::Builder::new().suffix(".msgpack").tempfile()?;
     let circuit_path = circuit_tmp.path().to_str().unwrap().to_string();
 
-    api::compile(
-        &circuit_path,
-        ProofConfig::GoldilocksRaw, // fastest config; no commitment overhead
-        meta.circuit_params.clone(),
-        meta.architecture,
-        meta.wandb,
-        false, // no zstd compression — faster for tests
-    )
-    .map_err(|e| anyhow::anyhow!("compile: {e}"))?;
+    // Use catch_unwind because the Circuit::define trait method panics on unsupported ops
+    // (it cannot propagate errors through the RootAPI trait boundary).
+    let compile_result = std::panic::catch_unwind(|| {
+        api::compile(
+            &circuit_path,
+            ProofConfig::GoldilocksRaw, // fastest config; no commitment overhead
+            meta.circuit_params.clone(),
+            meta.architecture,
+            meta.wandb,
+            false, // no zstd compression — faster for tests
+        )
+    });
+    match compile_result {
+        Ok(Ok(())) => {}
+        Ok(Err(e)) => return Err(anyhow::anyhow!("compile: {e}")),
+        Err(panic_payload) => {
+            let msg = panic_payload
+                .downcast_ref::<String>()
+                .map(|s| s.as_str())
+                .or_else(|| panic_payload.downcast_ref::<&str>().copied())
+                .unwrap_or("unknown panic");
+            return Err(anyhow::anyhow!("compile (panic): {msg}"));
+        }
+    }
 
     // Load compiled circuit bundle back from disk
     let bundle = api::read_circuit_bundle(&circuit_path)
@@ -326,15 +400,24 @@ fn run_jstprove(case: &TestCase) -> anyhow::Result<Vec<i64>> {
         .clone()
         .unwrap_or_else(|| meta.circuit_params.clone());
 
-    // Convert i64 inputs to f64.
-    // For INT64-typed ops, witness_f64 detects elem_type=7 and bypasses alpha-scaling,
-    // so casting i64→f64 is correct (values are exact integers).
-    // For FLOAT-typed ops, inputs are pre-scaled by alpha; dividing by alpha here and
-    // letting witness_f64 re-multiply recovers the original values exactly.
+    // Convert i64 inputs to f64, dividing by alpha for FLOAT inputs.
+    // - INT64-typed inputs: witness_f64 bypasses alpha-scaling, so cast i64→f64 directly.
+    // - FLOAT-typed inputs: TestCase.inputs stores α-scaled i64; divide by α here so
+    //   witness_f64 can re-multiply by α and recover the original value.
+    const ALPHA: f64 = 262144.0;
+    let input_info = onnx_input_info(&case.onnx_bytes);
     let activations: Vec<f64> = case
         .inputs
         .iter()
-        .flat_map(|v| v.iter().map(|&x| x as f64))
+        .enumerate()
+        .flat_map(|(idx, v)| {
+            let is_float = input_info
+                .get(idx)
+                .map(|i| i.elem_type == 1)
+                .unwrap_or(false);
+            let scale = if is_float { ALPHA } else { 1.0 };
+            v.iter().map(move |&x| x as f64 / scale).collect::<Vec<_>>()
+        })
         .collect();
 
     // Generate witness — this is the correctness check, not GKR proving

@@ -39,6 +39,15 @@ pub struct Initializer {
     pub data: Vec<i64>,
 }
 
+/// A constant FLOAT tensor baked into the ONNX model as a graph initializer.
+/// Values are stored as real f32 (not α-scaled). JSTProve quantizes them during compile.
+#[derive(Debug, Clone)]
+pub struct FloatInit {
+    pub name: &'static str,
+    pub dims: Vec<i64>,
+    pub data: Vec<f32>,
+}
+
 /// Build a minimal single-operator ONNX model and return it as serialized protobuf bytes.
 ///
 /// # Arguments
@@ -66,6 +75,7 @@ pub fn build_single_op_model(
         attrs,
         initializers,
         &[],
+        &[],
     )
 }
 
@@ -82,6 +92,7 @@ pub fn build_single_op_model_ordered(
     attrs: &[NodeAttr],
     initializers: &[Initializer],
     node_input_order: &[&str],
+    float_inits: &[FloatInit],
 ) -> anyhow::Result<Vec<u8>> {
     anyhow::ensure!(
         !output_shapes.is_empty(),
@@ -109,6 +120,9 @@ pub fn build_single_op_model_ordered(
         for init in initializers {
             v.push(init.name.to_string());
         }
+        for fi in float_inits {
+            v.push(fi.name.to_string());
+        }
         v
     } else {
         node_input_order.iter().map(|s| s.to_string()).collect()
@@ -132,8 +146,12 @@ pub fn build_single_op_model_ordered(
         ..Default::default()
     };
 
-    // Build initializer tensors
-    let init_tensors: Vec<TensorProto> = initializers.iter().map(make_initializer).collect();
+    // Build initializer tensors (INT64)
+    let mut init_tensors: Vec<TensorProto> = initializers.iter().map(make_initializer).collect();
+    // Append FLOAT initializer tensors
+    for fi in float_inits {
+        init_tensors.push(make_float_initializer(fi));
+    }
 
     let graph = GraphProto {
         name: Some("main".to_string()),
@@ -237,6 +255,16 @@ fn make_initializer(init: &Initializer) -> TensorProto {
         dims: init.dims.clone(),
         data_type: Some(7), // INT64
         int64_data: init.data.clone(),
+        ..Default::default()
+    }
+}
+
+fn make_float_initializer(init: &FloatInit) -> TensorProto {
+    TensorProto {
+        name: Some(init.name.to_string()),
+        dims: init.dims.clone(),
+        data_type: Some(1), // FLOAT
+        float_data: init.data.clone(),
         ..Default::default()
     }
 }
