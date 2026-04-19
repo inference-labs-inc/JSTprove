@@ -1,4 +1,5 @@
 use jstprove_conformance::{
+    all_regression_fixtures,
     generator::{
         arithmetic_cases, boolean_cases, norm_cases, pooling_cases, reduction_cases,
         rescaling_cases, shrink, spatial_cases, structural_cases, topk_cases, transcendental_cases,
@@ -219,4 +220,60 @@ fn spatial_ops() {
 fn topk_ops() {
     let _ = env_logger::try_init();
     run_group("topk", topk_cases());
+}
+
+// ---------------------------------------------------------------------------
+// Milestone 5: regression fixtures for historical constraint violations
+// ---------------------------------------------------------------------------
+
+/// Deterministic regression tests for historical bugs.
+/// Each fixture captures the exact input that triggered the original failure.
+#[test]
+fn regression_fixtures() {
+    let _ = env_logger::try_init();
+    let full_runner = ConformanceRunner { reference_only: false };
+    let ref_runner = ConformanceRunner { reference_only: true };
+    let mut failures = 0usize;
+
+    for fixture in all_regression_fixtures() {
+        // Fixtures with allow_jstprove_error may OOM or panic in the JSTProve
+        // path (e.g., Cos with ~4 M circuit variables).  Run them reference-only
+        // to verify the ONNX model and tract path are correct, then skip JSTProve.
+        let runner = if fixture.allow_jstprove_error { &ref_runner } else { &full_runner };
+
+        match runner.run(&fixture.case) {
+            TestResult::Pass => {
+                if fixture.allow_jstprove_error {
+                    eprintln!(
+                        "[regression] SKIP (reference_only) fixture='{}': \
+                         JSTProve path skipped (allow_jstprove_error=true — circuit too large for test)",
+                        fixture.id
+                    );
+                }
+            }
+            TestResult::Fail(fails) => {
+                failures += fails.len();
+                eprintln!(
+                    "[regression] FAIL fixture='{}' (fixed in {}): {} mismatch(es)\n  Description: {}",
+                    fixture.id,
+                    fixture.fixed_in,
+                    fails.len(),
+                    fixture.failure_description,
+                );
+                for f in &fails {
+                    eprintln!("  {f}");
+                }
+            }
+            TestResult::Error(e) => {
+                panic!(
+                    "[regression] ERROR fixture='{}' (fixed in {}): {e:#}\nDescription: {}",
+                    fixture.id, fixture.fixed_in, fixture.failure_description
+                );
+            }
+        }
+    }
+
+    if failures > 0 {
+        panic!("[regression] {failures} element-level failure(s)");
+    }
 }
