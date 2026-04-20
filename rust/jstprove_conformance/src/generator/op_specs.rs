@@ -31,8 +31,7 @@ pub struct OpInputSpec {
 }
 
 // ---------------------------------------------------------------------------
-// Canonical op specs — populated here for Relu, Add, Gemm.
-// Milestones 3–4 will add the remaining operators.
+// Canonical op specs — Relu, Add, Gemm.
 // ---------------------------------------------------------------------------
 
 /// Relu: single input, single output, no attributes, no rescale.

@@ -1,4 +1,4 @@
-//! Milestone 5: regression fixtures for historical constraint violations.
+//! Regression fixtures for historical constraint violations.
 //!
 //! Each `RegressionFixture` captures the exact (or minimal adversarial) input
 //! that triggered the original failure, links back to the PR/issue that fixed it,
@@ -562,7 +562,7 @@ fn f10b_topk_k_equals_n() -> RegressionFixture {
     )
     .expect("F-10b: build TopK model failed");
 
-    // Distinct values from the milestone spec; sorted descending: [9,6,5,4,3,2,1,1]
+    // Distinct values; sorted descending: [9,6,5,4,3,2,1,1]
     let x_vals: Vec<i64> =
         vec![3 * ALPHA, ALPHA, 4 * ALPHA, ALPHA, 5 * ALPHA, 9 * ALPHA, 2 * ALPHA, 6 * ALPHA];
 

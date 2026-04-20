@@ -1,4 +1,5 @@
-//! Milestone 4: conformance tests for rescaling arithmetic ops and transcendental/hint ops.
+//! Fixed test cases for Group E–J operators (rescaling arithmetic, transcendental/hint,
+//! pooling, normalization, spatial, TopK).
 //!
 //! All test inputs use α-scaled FLOAT (elem_type=1) tensors.
 //! Weights are provided as FloatInit (real f32 values); JSTProve quantizes them internally.

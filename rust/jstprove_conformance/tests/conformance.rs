@@ -94,7 +94,7 @@ fn run_group(group_name: &str, cases: Vec<TestCase>) {
 }
 
 // ---------------------------------------------------------------------------
-// Milestone 1 smoke tests (kept for regression)
+// Smoke tests
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -159,7 +159,7 @@ fn relu_reference_only() {
 }
 
 // ---------------------------------------------------------------------------
-// Milestone 3: operator groups
+// Operator groups — INT64-typed ops
 // ---------------------------------------------------------------------------
 
 /// Group A — Structural ops (Reshape, Flatten, Squeeze, Unsqueeze, Cast,
@@ -195,7 +195,7 @@ fn reduction_ops() {
 }
 
 // ---------------------------------------------------------------------------
-// Milestone 4: FLOAT-typed ops
+// Operator groups — FLOAT-typed ops
 // ---------------------------------------------------------------------------
 
 /// Group E — Rescaling arithmetic ops (Gemm, MatMul, Conv, ConvTranspose, BatchNorm, Div, Pow).
@@ -242,7 +242,7 @@ fn topk_ops() {
 }
 
 // ---------------------------------------------------------------------------
-// Milestone 5: regression fixtures for historical constraint violations
+// Regression fixtures for historical constraint violations
 // ---------------------------------------------------------------------------
 
 /// Deterministic regression tests for historical bugs.

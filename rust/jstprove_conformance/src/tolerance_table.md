@@ -1,4 +1,4 @@
-# Conformance tolerance table — Milestone 4
+# Conformance tolerance table
 
 All values are α-scaled fixed-point integers (α = 2^18 = 262144).
 Tolerances are expressed in **quantised units** (abs) and fractional error (rel).

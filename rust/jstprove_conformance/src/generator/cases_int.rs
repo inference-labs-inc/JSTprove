@@ -1,4 +1,4 @@
-//! Milestone 3: fixed test cases for all Group A–D operators.
+//! Fixed test cases for Group A–D operators (structural, arithmetic, boolean, reduction).
 //!
 //! Design notes:
 //! - All test cases use **INT64** typed tensors (elem_type = 7).  JSTProve
@@ -8,9 +8,7 @@
 //!
 //! - Operators that multiply two alpha-scaled values (Mul, LeakyRelu,
 //!   HardSwish) require FLOAT typed inputs to agree between JSTProve and
-//!   tract. Those ops are tested in `reference_only` mode here (tract path
-//!   only) and will be promoted to full comparison once the FLOAT input path
-//!   is wired up (milestone 4/5).
+//!   tract. Those ops are tested in `reference_only` mode (tract path only).
 //!
 //! - Every test case calls `build_single_op_model` directly so that shapes,
 //!   initialisers, and attributes are fully explicit and reproducible.
@@ -201,8 +199,7 @@ pub fn structural_cases() -> Vec<TestCase> {
     ));
 
     // Cast: INT64→INT64 triggers tract optimization that returns TDim, which our
-    // run_tract i64 extractor can't handle. Cast is deferred to milestone 4 which
-    // will add proper datum-type handling for integer casts.
+    // run_tract i64 extractor can't handle non-INT64 Cast outputs currently.
 
     // ---- ConstantOfShape ----
     // shape=[3, 4] fill=0 (INT64) → [3, 4] all zeros
@@ -264,7 +261,7 @@ pub fn structural_cases() -> Vec<TestCase> {
         }],
         vec![vec![1, 2, 3, 4, 5, 6]],
     ));
-    // [1, 4] repeats=[3, 1] → [3, 4]  (regression shape from milestone spec)
+    // [1, 4] repeats=[3, 1] → [3, 4]  (regression shape)
     cases.push(exact(
         "Tile",
         1,
@@ -793,8 +790,7 @@ pub fn arithmetic_cases() -> Vec<TestCase> {
     // Mul, LeakyRelu, HardSwish require FLOAT-typed inputs for correct semantics:
     // - JSTProve assumes alpha-scaled inputs and applies rescale (÷α) for these ops.
     // - tract does not support INT64 for LeakyRelu/HardSwish.
-    // Full conformance tests for these ops are deferred until FLOAT input support
-    // is added to the conformance runner (milestone 4/5).
+    // Full conformance tests for these ops require FLOAT input support in the runner.
 
     cases.truncate(default_case_count());
     cases

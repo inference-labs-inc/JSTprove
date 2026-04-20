@@ -58,12 +58,12 @@ If the op needs a hint (transcendental, non-polynomial):
 
 | Group | File | Ops |
 |-------|------|-----|
-| A–D (structural, arithmetic, boolean, reduction) | `src/generator/cases_m3.rs` | INT64-typed |
-| E–J (rescaling, transcendental, pooling, etc.)   | `src/generator/cases_m4.rs` | FLOAT-typed |
+| A–D (structural, arithmetic, boolean, reduction) | `src/generator/cases_int.rs` | INT64-typed |
+| E–J (rescaling, transcendental, pooling, etc.)   | `src/generator/cases_float.rs` | FLOAT-typed |
 
 ### Step 3 — Add hardcoded test cases
 
-Open the appropriate `cases_m*.rs` file and add cases inside the relevant `*_cases()` function.
+Open the appropriate `cases_*.rs` file and add cases inside the relevant `*_cases()` function.
 
 **For INT64 ops** (no α-scaling):
 ```rust
@@ -114,13 +114,13 @@ Add at least **3 diverse cases** per operator:
 
 ### Step 4 — Register the group test (if adding a new group)
 
-If you're adding a brand-new operator group (not an existing milestone group), add a public
-function in `cases_m*.rs` and wire it up in:
+If you're adding a brand-new operator group, add a public
+function in `cases_int.rs` or `cases_float.rs` and wire it up in:
 
-- `src/generator/mod.rs`: add `pub use cases_m*::{...}`
+- `src/generator/mod.rs`: add `pub use cases_*::{...}`
 - `tests/conformance.rs`: add a `#[test]` function calling `run_group`
 
-For groups within existing milestones, the new cases are automatically picked up by the
+For ops that belong to an existing group, the new cases are automatically picked up by the
 existing `*_cases()` call.
 
 ### Step 5 — Choose the right tolerance
@@ -228,8 +228,8 @@ src/
   generator/
     mod.rs                — re-exports, default_case_count()
     builder.rs            — TestCaseBuilder, shrink(), DEFAULT_SEEDS
-    cases_m3.rs           — Group A–D: structural/arithmetic/boolean/reduction
-    cases_m4.rs           — Group E–J: rescaling/transcendental/pooling/spatial/topk
+    cases_int.rs          — Group A–D: structural/arithmetic/boolean/reduction (INT64)
+    cases_float.rs        — Group E–J: rescaling/transcendental/pooling/spatial/topk (FLOAT)
     op_specs.rs           — OpInputSpec, TensorSpec (for property-based generation)
     shapes.rs             — ShapeSpec (vec, matrix, tensor, broadcast pair, …)
     values.rs             — ValueSpec (mixed, near-zero, boundary, …), ALPHA, SAFE_RANGE
