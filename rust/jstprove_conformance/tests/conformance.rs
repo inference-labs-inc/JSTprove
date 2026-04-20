@@ -250,15 +250,23 @@ fn topk_ops() {
 #[test]
 fn regression_fixtures() {
     let _ = env_logger::try_init();
-    let full_runner = ConformanceRunner { reference_only: false };
-    let ref_runner = ConformanceRunner { reference_only: true };
+    let full_runner = ConformanceRunner {
+        reference_only: false,
+    };
+    let ref_runner = ConformanceRunner {
+        reference_only: true,
+    };
     let mut failures = 0usize;
 
     for fixture in all_regression_fixtures() {
         // Fixtures with allow_jstprove_error may OOM or panic in the JSTProve
         // path (e.g., Cos with ~4 M circuit variables).  Run them reference-only
         // to verify the ONNX model and tract path are correct, then skip JSTProve.
-        let runner = if fixture.allow_jstprove_error { &ref_runner } else { &full_runner };
+        let runner = if fixture.allow_jstprove_error {
+            &ref_runner
+        } else {
+            &full_runner
+        };
 
         match runner.run(&fixture.case) {
             TestResult::Pass => {

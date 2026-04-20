@@ -17,7 +17,11 @@ const INT64: i32 = 7;
 const ALPHA: i64 = 262144;
 
 fn tol(abs: i64) -> Tolerance {
-    Tolerance { abs, rel: 0.0, reason: "see tolerance_table.md" }
+    Tolerance {
+        abs,
+        rel: 0.0,
+        reason: "see tolerance_table.md",
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -82,7 +86,11 @@ fn f01_tile_broadcast() -> RegressionFixture {
         &[("x", &[1, 8], INT64)],
         &[("y", &[4, 8], INT64)],
         &[],
-        &[Initializer { name: "repeats", dims: vec![2], data: vec![4, 1] }],
+        &[Initializer {
+            name: "repeats",
+            dims: vec![2],
+            data: vec![4, 1],
+        }],
     )
     .expect("F-01: build Tile model failed");
 
@@ -114,7 +122,10 @@ fn f02_transpose_boundary_perm() -> RegressionFixture {
         "Transpose",
         &[("x", &[2, 3, 4], INT64)],
         &[("y", &[4, 2, 3], INT64)],
-        &[NodeAttr { name: "perm", value: AttrValue::Ints(vec![2, 0, 1]) }],
+        &[NodeAttr {
+            name: "perm",
+            value: AttrValue::Ints(vec![2, 0, 1]),
+        }],
         &[],
     )
     .expect("F-02: build Transpose model failed");
@@ -149,7 +160,11 @@ fn f03_expand_scalar_to_matrix() -> RegressionFixture {
         &[("x", &[1, 1], INT64)],
         &[("y", &[4, 8], INT64)],
         &[],
-        &[Initializer { name: "shape", dims: vec![2], data: vec![4, 8] }],
+        &[Initializer {
+            name: "shape",
+            dims: vec![2],
+            data: vec![4, 8],
+        }],
     )
     .expect("F-03: build Expand model failed");
 
@@ -182,8 +197,15 @@ fn f04_gather_max_index() -> RegressionFixture {
         "Gather",
         &[("data", &[4, 8], INT64)],
         &[("output", &[1, 8], INT64)],
-        &[NodeAttr { name: "axis", value: AttrValue::Int(0) }],
-        &[Initializer { name: "indices", dims: vec![1], data: vec![3] }],
+        &[NodeAttr {
+            name: "axis",
+            value: AttrValue::Int(0),
+        }],
+        &[Initializer {
+            name: "indices",
+            dims: vec![1],
+            data: vec![3],
+        }],
     )
     .expect("F-04: build Gather model failed");
 
@@ -225,7 +247,11 @@ fn f05_div_near_zero_divisor() -> RegressionFixture {
         &[("A", &[8], INT64)],
         &[("Y", &[8], INT64)],
         &[],
-        &[Initializer { name: "B", dims: vec![8], data: vec![1, 1, 1, 1, 1, 1, 1, 1] }],
+        &[Initializer {
+            name: "B",
+            dims: vec![8],
+            data: vec![1, 1, 1, 1, 1, 1, 1, 1],
+        }],
     )
     .expect("F-05: build Div model failed");
 
@@ -273,10 +299,10 @@ fn f06_cos_large_angle() -> RegressionFixture {
     .expect("F-06: build Cos model failed");
 
     let x_vals: Vec<i64> = vec![
-        100 * ALPHA,                  // 100 rad
-        -100 * ALPHA,                 // -100 rad
-        314_159 * ALPHA / 100_000,    // ≈ π rad
-        628_318 * ALPHA / 100_000,    // ≈ 2π rad
+        100 * ALPHA,               // 100 rad
+        -100 * ALPHA,              // -100 rad
+        314_159 * ALPHA / 100_000, // ≈ π rad
+        628_318 * ALPHA / 100_000, // ≈ 2π rad
     ];
 
     RegressionFixture {
@@ -313,8 +339,14 @@ fn f07a_reducemax_overflow_boundary() -> RegressionFixture {
         &[("data", &[6], INT64)],
         &[("output", &[1], INT64)],
         &[
-            NodeAttr { name: "axes", value: AttrValue::Ints(vec![0]) },
-            NodeAttr { name: "keepdims", value: AttrValue::Int(0) },
+            NodeAttr {
+                name: "axes",
+                value: AttrValue::Ints(vec![0]),
+            },
+            NodeAttr {
+                name: "keepdims",
+                value: AttrValue::Int(0),
+            },
         ],
         &[],
     )
@@ -352,8 +384,15 @@ fn f07b_reducesum_overflow_boundary() -> RegressionFixture {
         "ReduceSum",
         &[("data", &[16], INT64)],
         &[("output", &[1], INT64)],
-        &[NodeAttr { name: "keepdims", value: AttrValue::Int(0) }],
-        &[Initializer { name: "axes", dims: vec![1], data: vec![0] }],
+        &[NodeAttr {
+            name: "keepdims",
+            value: AttrValue::Int(0),
+        }],
+        &[Initializer {
+            name: "axes",
+            dims: vec![1],
+            data: vec![0],
+        }],
     )
     .expect("F-07b: build ReduceSum model failed");
 
@@ -432,8 +471,16 @@ fn f08b_gemm_overflow_boundary() -> RegressionFixture {
         &[],
         &["A", "B", "C"],
         &[
-            FloatInit { name: "B", dims: vec![4, 4], data: b_data },
-            FloatInit { name: "C", dims: vec![4], data: c_data },
+            FloatInit {
+                name: "B",
+                dims: vec![4, 4],
+                data: b_data,
+            },
+            FloatInit {
+                name: "C",
+                dims: vec![4],
+                data: c_data,
+            },
         ],
     )
     .expect("F-08b: build Gemm model failed");
@@ -476,14 +523,28 @@ fn f09_layernorm_signed_output() -> RegressionFixture {
         &[("X", &[1, 4], FLOAT)],
         &[("Y", &[1, 4], FLOAT)],
         &[
-            NodeAttr { name: "axis", value: AttrValue::Int(-1) },
-            NodeAttr { name: "epsilon", value: AttrValue::Float(1e-5) },
+            NodeAttr {
+                name: "axis",
+                value: AttrValue::Int(-1),
+            },
+            NodeAttr {
+                name: "epsilon",
+                value: AttrValue::Float(1e-5),
+            },
         ],
         &[],
         &["X", "scale", "bias"],
         &[
-            FloatInit { name: "scale", dims: vec![4], data: vec![1.0_f32; 4] },
-            FloatInit { name: "bias", dims: vec![4], data: vec![0.0_f32; 4] },
+            FloatInit {
+                name: "scale",
+                dims: vec![4],
+                data: vec![1.0_f32; 4],
+            },
+            FloatInit {
+                name: "bias",
+                dims: vec![4],
+                data: vec![0.0_f32; 4],
+            },
         ],
     )
     .expect("F-09: build LayerNorm model failed");
@@ -521,8 +582,15 @@ fn f10a_topk_duplicates() -> RegressionFixture {
         "TopK",
         &[("X", &[1, 8], FLOAT)],
         &[("values", &[1, 3], FLOAT), ("indices", &[1, 3], INT64)],
-        &[NodeAttr { name: "axis", value: AttrValue::Int(-1) }],
-        &[Initializer { name: "K", dims: vec![1], data: vec![3] }],
+        &[NodeAttr {
+            name: "axis",
+            value: AttrValue::Int(-1),
+        }],
+        &[Initializer {
+            name: "K",
+            dims: vec![1],
+            data: vec![3],
+        }],
     )
     .expect("F-10a: build TopK model failed");
 
@@ -557,14 +625,29 @@ fn f10b_topk_k_equals_n() -> RegressionFixture {
         "TopK",
         &[("X", &[1, 8], FLOAT)],
         &[("values", &[1, 8], FLOAT), ("indices", &[1, 8], INT64)],
-        &[NodeAttr { name: "axis", value: AttrValue::Int(-1) }],
-        &[Initializer { name: "K", dims: vec![1], data: vec![8] }],
+        &[NodeAttr {
+            name: "axis",
+            value: AttrValue::Int(-1),
+        }],
+        &[Initializer {
+            name: "K",
+            dims: vec![1],
+            data: vec![8],
+        }],
     )
     .expect("F-10b: build TopK model failed");
 
     // Distinct values; sorted descending: [9,6,5,4,3,2,1,1]
-    let x_vals: Vec<i64> =
-        vec![3 * ALPHA, ALPHA, 4 * ALPHA, ALPHA, 5 * ALPHA, 9 * ALPHA, 2 * ALPHA, 6 * ALPHA];
+    let x_vals: Vec<i64> = vec![
+        3 * ALPHA,
+        ALPHA,
+        4 * ALPHA,
+        ALPHA,
+        5 * ALPHA,
+        9 * ALPHA,
+        2 * ALPHA,
+        6 * ALPHA,
+    ];
 
     RegressionFixture {
         id: "topk_k_equals_n",
@@ -606,8 +689,16 @@ fn f11_gemm_bias_broadcast() -> RegressionFixture {
         &[],
         &["A", "B", "C"],
         &[
-            FloatInit { name: "B", dims: vec![3, 4], data: b_data },
-            FloatInit { name: "C", dims: vec![4], data: c_data },
+            FloatInit {
+                name: "B",
+                dims: vec![3, 4],
+                data: b_data,
+            },
+            FloatInit {
+                name: "C",
+                dims: vec![4],
+                data: c_data,
+            },
         ],
     )
     .expect("F-11: build Gemm model failed");
@@ -647,7 +738,11 @@ fn f12a_pow_fractional_exponent_0_5() -> RegressionFixture {
         &[],
         &[],
         &["X", "exponent"],
-        &[FloatInit { name: "exponent", dims: vec![], data: vec![0.5_f32] }],
+        &[FloatInit {
+            name: "exponent",
+            dims: vec![],
+            data: vec![0.5_f32],
+        }],
     )
     .expect("F-12a: build Pow^0.5 model failed");
 
@@ -692,7 +787,11 @@ fn f12b_pow_fractional_exponent_1_5() -> RegressionFixture {
         &[],
         &[],
         &["X", "exponent"],
-        &[FloatInit { name: "exponent", dims: vec![], data: vec![1.5_f32] }],
+        &[FloatInit {
+            name: "exponent",
+            dims: vec![],
+            data: vec![1.5_f32],
+        }],
     )
     .expect("F-12b: build Pow^1.5 model failed");
 
