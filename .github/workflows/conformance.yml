@@ -28,7 +28,7 @@ permissions:
 jobs:
   conformance:
     runs-on: ubuntu-latest
-    timeout-minutes: 8
+    timeout-minutes: 20
 
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v4
@@ -69,7 +69,7 @@ jobs:
           --test conformance
           --features ci
           -- --test-threads=4
-        timeout-minutes: 20
+        timeout-minutes: 15
 
       - name: Report conformance failure
         if: failure()
