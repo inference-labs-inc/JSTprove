@@ -3,6 +3,11 @@ name = "jstprove-conformance"
 version.workspace = true
 edition = "2021"
 
+[features]
+# Reduce per-op case counts for CI runs (targets <5 min on ubuntu-latest).
+# Enable with: cargo test -p jstprove-conformance --features ci
+ci = []
+
 [dependencies]
 anyhow = "1"
 thiserror = { workspace = true }

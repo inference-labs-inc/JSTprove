@@ -6,6 +6,7 @@
 //! Ops that are not yet implemented in the Expander circuit backend (GroupNormalization,
 //! InstanceNormalization) are included as reference_only placeholders and will auto-skip.
 
+use super::default_case_count;
 use crate::onnx_builder::{
     build_single_op_model, build_single_op_model_ordered, AttrValue, FloatInit, Initializer,
     NodeAttr,
@@ -485,6 +486,7 @@ pub fn rescaling_cases() -> Vec<TestCase> {
         });
     }
 
+    cases.truncate(default_case_count());
     cases
 }
 
@@ -701,6 +703,7 @@ pub fn transcendental_cases() -> Vec<TestCase> {
     // too memory-intensive for standalone conformance tests in debug builds.
     // These ops are tested via the full model pipeline (make_model.py) instead.
 
+    cases.truncate(default_case_count());
     cases
 }
 
@@ -795,6 +798,7 @@ pub fn pooling_cases() -> Vec<TestCase> {
         });
     }
 
+    cases.truncate(default_case_count());
     cases
 }
 
@@ -903,6 +907,7 @@ pub fn spatial_cases() -> Vec<TestCase> {
     // and tract does not implement it, GridSample cannot be conformance-tested here.
     // GridSample is exercised via the full end-to-end test pipeline (make_model.py).
 
+    cases.truncate(default_case_count());
     cases
 }
 
@@ -990,5 +995,6 @@ pub fn topk_cases() -> Vec<TestCase> {
         });
     }
 
+    cases.truncate(default_case_count());
     cases
 }

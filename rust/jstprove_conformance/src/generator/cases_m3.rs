@@ -15,6 +15,7 @@
 //! - Every test case calls `build_single_op_model` directly so that shapes,
 //!   initialisers, and attributes are fully explicit and reproducible.
 
+use super::default_case_count;
 use crate::onnx_builder::{
     build_single_op_model, build_single_op_model_ordered, AttrValue, Initializer, NodeAttr,
 };
@@ -674,6 +675,7 @@ pub fn structural_cases() -> Vec<TestCase> {
         }
     });
 
+    cases.truncate(default_case_count());
     cases
 }
 
@@ -794,6 +796,7 @@ pub fn arithmetic_cases() -> Vec<TestCase> {
     // Full conformance tests for these ops are deferred until FLOAT input support
     // is added to the conformance runner (milestone 4/5).
 
+    cases.truncate(default_case_count());
     cases
 }
 
@@ -886,6 +889,7 @@ pub fn boolean_cases() -> Vec<TestCase> {
         ],
     ));
 
+    cases.truncate(default_case_count());
     cases
 }
 
@@ -991,5 +995,6 @@ pub fn reduction_cases() -> Vec<TestCase> {
         vec![vec![5, 10, 3, 1, 7, 2]],
     ));
 
+    cases.truncate(default_case_count());
     cases
 }

@@ -1,0 +1,79 @@
+name: Conformance Harness
+
+# Triggered on every PR / push that touches operator implementations,
+# ONNX parsing/quantization, or the conformance harness itself.
+# Docs-only changes (*.md, docs/) are excluded.
+
+on:
+  pull_request:
+    branches: [ "main" ]
+    paths:
+      - "rust/jstprove_circuits/src/circuit_functions/**"
+      - "rust/jstprove_onnx/src/**"
+      - "rust/jstprove_conformance/**"
+  push:
+    branches: [ "main" ]
+    paths:
+      - "rust/jstprove_circuits/src/circuit_functions/**"
+      - "rust/jstprove_onnx/src/**"
+      - "rust/jstprove_conformance/**"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  conformance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@efa25f7f19611383d5b0ccf2d1c8914531636bf9 # master
+        with:
+          toolchain: nightly-2025-03-27
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update && sudo apt-get install -y \
+            pkg-config \
+            libclang-dev \
+            clang \
+            protobuf-compiler \
+            libssl-dev
+
+      - name: Cache Rust dependencies
+        uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-conformance-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-conformance-
+
+      - name: Run conformance harness
+        # --features ci: reduces per-op case counts to stay under 5 minutes.
+        # --test-threads=4: parallelises independent test groups.
+        # The step-level timeout-minutes catches a hung witness-generation loop
+        # before the job-level timeout fires.
+        run: >
+          cargo test
+          -p jstprove-conformance
+          --test conformance
+          --features ci
+          -- --test-threads=4
+        timeout-minutes: 5
+
+      - name: Report conformance failure
+        if: failure()
+        run: |
+          echo "::error::Conformance harness failed. Check the step log for the failing op, seed, and delta."
+          echo "Tip: reproduce locally with:"
+          echo "  CONFORMANCE_FAIL_FAST=0 cargo test -p jstprove-conformance --test conformance -- --nocapture"

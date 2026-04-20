@@ -10,6 +10,14 @@ use jstprove_conformance::{
 
 // ---------------------------------------------------------------------------
 // Helper: run a group of test cases and panic on any failure or error.
+//
+// Fail-fast mode (default): stops at the first failing op and reports
+// immediately — good for CI where the first failure is the most useful signal.
+//
+// Set CONFORMANCE_FAIL_FAST=0 to disable fail-fast and see ALL failures across
+// every case in the group before panicking.  Useful locally when debugging
+// multiple regressions at once.
+//
 // Reference-only cases (those whose TestCase was built with reference_only
 // semantics) are identified by running with both reference_only=false AND
 // reference_only=true.  If a case passes reference_only but fails full, it
@@ -17,6 +25,11 @@ use jstprove_conformance::{
 // ---------------------------------------------------------------------------
 
 fn run_group(group_name: &str, cases: Vec<TestCase>) {
+    // Fail-fast unless explicitly disabled.
+    let fail_fast = std::env::var("CONFORMANCE_FAIL_FAST")
+        .map(|v| v != "0")
+        .unwrap_or(true);
+
     let full_runner = ConformanceRunner {
         reference_only: false,
     };
@@ -43,6 +56,12 @@ fn run_group(group_name: &str, cases: Vec<TestCase>) {
                 }
                 let shrunken = shrink(case, &full_runner);
                 eprintln!("  minimized inputs: {:?}", shrunken.inputs);
+                if fail_fast {
+                    panic!(
+                        "[{group_name}] FAIL op={} seed={} — stopping early (set CONFORMANCE_FAIL_FAST=0 to see all failures)",
+                        case.op_name, case.seed
+                    );
+                }
             }
             TestResult::Error(e) => {
                 // Check if this is a known reference_only placeholder (passes ref but not full).
