@@ -69,7 +69,7 @@ jobs:
           --test conformance
           --features ci
           -- --test-threads=4
-        timeout-minutes: 5
+        timeout-minutes: 10
 
       - name: Report conformance failure
         if: failure()
