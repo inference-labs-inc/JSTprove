@@ -6,7 +6,7 @@ use pyo3::prelude::*;
 const MODE: OutputMode = OutputMode::Quiet;
 
 fn anyhow_to_pyerr(e: anyhow::Error) -> PyErr {
-    pyo3::exceptions::PyRuntimeError::new_err(format!("{:#}", e))
+    pyo3::exceptions::PyRuntimeError::new_err(format!("{e:#}"))
 }
 
 #[pyclass]
