@@ -7,7 +7,6 @@
 // This is not compatible with our compile time flag for avx256/avx512
 // in the core crate.
 // So we re-implement the BabyBearx16 field in our own crate.
-#![cfg_attr(target_arch = "x86_64", feature(stdarch_x86_avx512))]
 
 mod babybear;
 pub use babybear::{BabyBear, BabyBearParameters};
