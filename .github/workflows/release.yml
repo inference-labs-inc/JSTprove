@@ -32,7 +32,7 @@ jobs:
 
       - name: Install Rust
         run: |
-          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain nightly-2025-03-27
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain nightly-2025-06-20
           echo "$HOME/.cargo/bin" >> $GITHUB_PATH
 
       - name: Install uv
@@ -133,7 +133,7 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@efa25f7f19611383d5b0ccf2d1c8914531636bf9 # master
         with:
-          toolchain: nightly-2025-03-27
+          toolchain: nightly-2025-06-20
 
       - name: Install Rust target
         run: rustup target add aarch64-apple-darwin

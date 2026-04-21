@@ -36,7 +36,7 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@efa25f7f19611383d5b0ccf2d1c8914531636bf9 # master
         with:
-          toolchain: nightly-2025-03-27
+          toolchain: nightly-2025-06-20
 
       - name: Install system dependencies
         run: |
