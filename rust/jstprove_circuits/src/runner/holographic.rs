@@ -421,8 +421,7 @@ where
         } else {
             let output_len = 1 << challenge.rz_0.len();
             sp.eq_evals_at_rz0[..output_len].copy_from_slice(&sp.eq_evals_at_rx[..output_len]);
-            if alpha.is_some() && challenge.rz_1.is_some() {
-                let a = alpha.unwrap();
+            if let (Some(a), Some(_)) = (alpha, challenge.rz_1.as_ref()) {
                 for j in 0..(1usize << vk_layer.n_z) {
                     sp.eq_evals_at_rz0[j] += a * sp.eq_evals_at_ry[j];
                 }
@@ -450,10 +449,10 @@ where
             .trailing_zeros() as usize;
 
         let mut sum = current_v0;
-        if let Some(v1) = current_v1 {
-            if let Some(a) = alpha {
-                sum += v1 * a;
-            }
+        if let Some(v1) = current_v1
+            && let Some(a) = alpha
+        {
+            sum += v1 * a;
         }
 
         let claims = combined

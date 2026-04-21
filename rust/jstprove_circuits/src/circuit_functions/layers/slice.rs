@@ -281,10 +281,10 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for SliceLayer {
 
             if let Some(rmpv::Value::Map(entries)) = layer.params.as_ref() {
                 let value = entries.iter().find_map(|(k, v)| {
-                    if let rmpv::Value::String(s) = k {
-                        if s.as_str() == Some(name.as_str()) {
-                            return Some(v);
-                        }
+                    if let rmpv::Value::String(s) = k
+                        && s.as_str() == Some(name.as_str())
+                    {
+                        return Some(v);
                     }
                     None
                 });

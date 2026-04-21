@@ -82,14 +82,8 @@ impl ScaleConfig {
         let max_digits = Self::max_safe_digits(n_bits, max_bound);
         anyhow::ensure!(
             exponent <= max_exp,
-            "requested {} decimal digits requires exponent={}, but field n_bits={} \
-             with max accumulation {:.2} only supports exponent up to {} ({} digits)",
-            target_digits,
-            exponent,
-            n_bits,
-            max_bound,
-            max_exp,
-            max_digits,
+            "requested {target_digits} decimal digits requires exponent={exponent}, but field n_bits={n_bits} \
+             with max accumulation {max_bound:.2} only supports exponent up to {max_exp} ({max_digits} digits)",
         );
         Ok(Self::new(DEFAULT_SCALE_BASE, exponent))
     }

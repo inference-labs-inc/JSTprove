@@ -205,10 +205,10 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for PadLayer {
                 entries
                     .iter()
                     .find_map(|(k, v)| {
-                        if let rmpv::Value::String(s) = k {
-                            if s.as_str() == Some(pads_name.as_str()) {
-                                return parse_i64_vec(v);
-                            }
+                        if let rmpv::Value::String(s) = k
+                            && s.as_str() == Some(pads_name.as_str())
+                        {
+                            return parse_i64_vec(v);
                         }
                         None
                     })
@@ -259,19 +259,19 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for PadLayer {
         }
 
         // Validate constant_value (input[2]): only zero padding is supported.
-        if let Some(cv_name) = layer.inputs.get(2).filter(|n| !n.is_empty()) {
-            if let Ok(cv) = get_w_or_b::<f64, _>(layer_context.w_and_b_map, cv_name) {
-                let has_nonzero = cv.iter().any(|&v| v != 0.0);
-                if has_nonzero {
-                    return Err(LayerError::Other {
-                        layer: LayerKind::Pad,
-                        msg: format!(
-                            "Pad constant_value input '{}' is non-zero; only zero padding is supported",
-                            cv_name
-                        ),
-                    }
-                    .into());
+        if let Some(cv_name) = layer.inputs.get(2).filter(|n| !n.is_empty())
+            && let Ok(cv) = get_w_or_b::<f64, _>(layer_context.w_and_b_map, cv_name)
+        {
+            let has_nonzero = cv.iter().any(|&v| v != 0.0);
+            if has_nonzero {
+                return Err(LayerError::Other {
+                    layer: LayerKind::Pad,
+                    msg: format!(
+                        "Pad constant_value input '{}' is non-zero; only zero padding is supported",
+                        cv_name
+                    ),
                 }
+                .into());
             }
         }
 

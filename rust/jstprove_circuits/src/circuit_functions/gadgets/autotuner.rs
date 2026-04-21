@@ -162,11 +162,11 @@ where
     let mut best_bits = DEFAULT_LOGUP_CHUNK_BITS;
     let mut best_cost = usize::MAX;
     for &c in candidates {
-        if let Some(cost) = compile_cost(c) {
-            if cost < best_cost {
-                best_cost = cost;
-                best_bits = c;
-            }
+        if let Some(cost) = compile_cost(c)
+            && cost < best_cost
+        {
+            best_cost = cost;
+            best_bits = c;
         }
     }
     best_bits

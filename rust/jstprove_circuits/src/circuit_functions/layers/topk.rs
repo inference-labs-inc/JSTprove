@@ -213,16 +213,16 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for TopKLayer {
                 let k_from_params = layer.params.as_ref().and_then(|p| {
                     if let rmpv::Value::Map(entries) = p {
                         entries.iter().find_map(|(key, value)| {
-                            if let rmpv::Value::String(s) = key {
-                                if s.as_str() == Some(k_name.as_str()) {
-                                    return parse_i64_vec(value).and_then(|vals| {
-                                        ndarray::ArrayD::from_shape_vec(
-                                            ndarray::IxDyn(&[vals.len()]),
-                                            vals,
-                                        )
-                                        .ok()
-                                    });
-                                }
+                            if let rmpv::Value::String(s) = key
+                                && s.as_str() == Some(k_name.as_str())
+                            {
+                                return parse_i64_vec(value).and_then(|vals| {
+                                    ndarray::ArrayD::from_shape_vec(
+                                        ndarray::IxDyn(&[vals.len()]),
+                                        vals,
+                                    )
+                                    .ok()
+                                });
                             }
                             None
                         })

@@ -149,7 +149,7 @@ mod tests {
         let y_q = to_i64(outputs[0]);
 
         // Expected: ~841100 (0.8411 * 1_000_000)
-        assert!((y_q - 841100).abs() < 1000, "y_q = {}", y_q);
+        assert!((y_q - 841100).abs() < 1000, "y_q = {y_q}");
     }
 
     #[test]
@@ -164,7 +164,7 @@ mod tests {
         let y_q = to_i64(outputs[0]);
 
         // Expected: ~-158900 (-0.1589 * 1_000_000)
-        assert!((y_q + 158900).abs() < 1000, "y_q = {}", y_q);
+        assert!((y_q + 158900).abs() < 1000, "y_q = {y_q}");
     }
 
     #[test]

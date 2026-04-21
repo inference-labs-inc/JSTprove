@@ -30,7 +30,7 @@ fn test_dump_lenet_structure() {
             node.name, node.op_type, node.inputs, node.outputs
         );
         for (k, v) in &node.attributes {
-            println!("    attr {}: {:?}", k, v);
+            println!("    attr {k}: {v:?}");
         }
     }
 

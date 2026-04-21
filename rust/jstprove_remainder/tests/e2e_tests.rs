@@ -1023,7 +1023,7 @@ fn test_maxpool_prove_verify() {
 
     let max_node = builder.add_input_shred("max_hint", output_vars, &committed);
     let delta_nodes: Vec<_> = (0..window_size)
-        .map(|i| builder.add_input_shred(&format!("delta_{}", i), output_vars, &committed))
+        .map(|i| builder.add_input_shred(&format!("delta_{i}"), output_vars, &committed))
         .collect();
 
     let gate_nodes: Vec<_> = (0..window_size)
@@ -1060,7 +1060,7 @@ fn test_maxpool_prove_verify() {
     );
     for i in 0..window_size {
         prover_circuit.set_input(
-            &format!("delta_{}", i),
+            &format!("delta_{i}"),
             MultilinearExtension::new(to_fr_vec(&deltas[i])),
         );
     }
@@ -1215,7 +1215,7 @@ fn test_conv_relu_maxpool_pipeline() {
     let rdz_node = builder.add_input_shred("relu_dz", res_vars, &committed);
     let pmax_node = builder.add_input_shred("pool_max", pool_out_vars, &committed);
     let pd_nodes: Vec<_> = (0..window_size)
-        .map(|i| builder.add_input_shred(&format!("pd_{}", i), pool_out_vars, &committed))
+        .map(|i| builder.add_input_shred(&format!("pd_{i}"), pool_out_vars, &committed))
         .collect();
 
     let im2col_node = builder.add_identity_gate_node(&input_node, im2col_wiring, im2col_vars, None);
@@ -1288,7 +1288,7 @@ fn test_conv_relu_maxpool_pipeline() {
     prover_circuit.set_input("pool_max", MultilinearExtension::new(to_fr_vec(&pool_max)));
     for i in 0..window_size {
         prover_circuit.set_input(
-            &format!("pd_{}", i),
+            &format!("pd_{i}"),
             MultilinearExtension::new(to_fr_vec(&pool_deltas[i])),
         );
     }
@@ -1458,7 +1458,7 @@ fn test_lenet_conv1_prove_verify() {
     let rdz = builder.add_input_shred("relu_dz", rv, &committed);
     let pmn = builder.add_input_shred("pool_max", pool_vars, &committed);
     let pdn: Vec<_> = (0..window_size)
-        .map(|i| builder.add_input_shred(&format!("pd_{}", i), pool_vars, &committed))
+        .map(|i| builder.add_input_shred(&format!("pd_{i}"), pool_vars, &committed))
         .collect();
 
     let im2col_n = builder.add_identity_gate_node(&inp, im2col_wiring, imv, None);
@@ -1514,7 +1514,7 @@ fn test_lenet_conv1_prove_verify() {
     prover_circuit.set_input("pool_max", MultilinearExtension::new(to_fr_vec(&pool_max)));
     for i in 0..window_size {
         prover_circuit.set_input(
-            &format!("pd_{}", i),
+            &format!("pd_{i}"),
             MultilinearExtension::new(to_fr_vec(&pool_deltas[i])),
         );
     }

@@ -195,14 +195,13 @@ fn main() {
     let has_arch = matches.get_one::<String>("arch").is_some();
     let has_onnx = matches.get_one::<String>("onnx").is_some();
 
-    if !is_remainder && !cli_backend_explicit {
-        if let Some(circuit_path) = matches.get_one::<String>("circuit_path") {
-            if let Some(params) = try_load_metadata_from_circuit(circuit_path) {
-                if params.proof_system.is_remainder() {
-                    is_remainder = true;
-                }
-            }
-        }
+    if !is_remainder
+        && !cli_backend_explicit
+        && let Some(circuit_path) = matches.get_one::<String>("circuit_path")
+        && let Some(params) = try_load_metadata_from_circuit(circuit_path)
+        && params.proof_system.is_remainder()
+    {
+        is_remainder = true;
     }
 
     if has_onnx && is_remainder {
@@ -266,16 +265,16 @@ fn main() {
     if !is_remainder && !has_onnx {
         if has_meta {
             set_onnx_context(&matches, needs_full);
-            if let Ok(params) = OnnxContext::get_params() {
-                if params.proof_system.is_remainder() {
-                    if cli_backend_explicit {
-                        eprintln!(
-                            "Error: command '{cmd_type}' --backend conflicts with metadata (backend: remainder)."
-                        );
-                        std::process::exit(1);
-                    }
-                    is_remainder = true;
+            if let Ok(params) = OnnxContext::get_params()
+                && params.proof_system.is_remainder()
+            {
+                if cli_backend_explicit {
+                    eprintln!(
+                        "Error: command '{cmd_type}' --backend conflicts with metadata (backend: remainder)."
+                    );
+                    std::process::exit(1);
                 }
+                is_remainder = true;
             }
         } else if needs_meta {
             let circuit_path = matches
@@ -348,15 +347,14 @@ fn main() {
     // with a stamping prover. Remainder mode is exempt because it
     // dispatches via meta.proof_system and never consults
     // proof_config.
-    if !is_remainder {
-        if let Some(ref meta) = metadata {
-            if meta.proof_config.is_none() {
-                eprintln!(
-                    "Error: circuit manifest has no stamped proof_config; this bundle was compiled with an unstamped prover and must be recompiled. --curve cannot override an unstamped manifest because the original config is unknown."
-                );
-                std::process::exit(1);
-            }
-        }
+    if !is_remainder
+        && let Some(ref meta) = metadata
+        && meta.proof_config.is_none()
+    {
+        eprintln!(
+            "Error: circuit manifest has no stamped proof_config; this bundle was compiled with an unstamped prover and must be recompiled. --curve cannot override an unstamped manifest because the original config is unknown."
+        );
+        std::process::exit(1);
     }
 
     // Remainder bypasses the ProofConfig dispatch entirely; pick a
