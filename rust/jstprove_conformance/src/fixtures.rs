@@ -335,7 +335,7 @@ fn f06_cos_large_angle() -> RegressionFixture {
             ignore_extra_reference_outputs: false,
             allow_jstprove_error: false,
         },
-        allow_jstprove_error: true, // Cos ~4 M vars — too large for debug-build tests
+        allow_jstprove_error: true, // XXX: Cos ~4 M vars — too large for debug-build tests
     }
 }
 
