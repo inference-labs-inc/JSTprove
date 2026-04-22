@@ -124,7 +124,7 @@ impl ConformanceRunner {
 
         let lengths_match = reference_outputs.len() == jstprove_outputs.len();
         let ref_longer = reference_outputs.len() > jstprove_outputs.len();
-        if !(lengths_match || ref_longer && case.ignore_extra_reference_outputs) {
+        if !(lengths_match || (ref_longer && case.ignore_extra_reference_outputs)) {
             log::error!(
                 "CONFORMANCE FAIL  op={}  seed={}  output length mismatch: reference={} jstprove={}",
                 case.op_name, case.seed,
@@ -328,18 +328,16 @@ fn run_tract(case: &TestCase) -> anyhow::Result<Vec<i64>> {
         } else if out.datum_type() == tract_onnx::prelude::DatumType::F64 {
             let view = out.to_array_view::<f64>()?;
             result.extend(view.iter().map(|&v| (v * ALPHA).round() as i64));
+        } else if out.datum_type() == tract_onnx::prelude::DatumType::I64 {
+            let view = out.to_array_view::<i64>()?;
+            result.extend(view.iter().copied());
         } else {
-            // Check if the ONNX graph output is FLOAT (elem_type=1) — if so, scale to α.
-            // This handles cases where tract coerces the output type.
-            let onnx_elem_type = output_info.get(out_idx).map(|i| i.elem_type).unwrap_or(7);
-            if onnx_elem_type == 1 {
-                // FLOAT output — try to read as f32 via generic path
-                let view = out.to_array_view::<f32>()?;
-                result.extend(view.iter().map(|&v| (v as f64 * ALPHA).round() as i64));
-            } else {
-                let view = out.to_array_view::<i64>()?;
-                result.extend(view.iter().copied());
-            }
+            let onnx_elem_type = output_info.get(out_idx).map(|i| i.elem_type).unwrap_or(-1);
+            return Err(anyhow::anyhow!(
+                "run_tract: unhandled output datum type {:?} at index {out_idx} \
+                 (ONNX elem_type={onnx_elem_type})",
+                out.datum_type()
+            ));
         }
     }
     Ok(result)
@@ -434,7 +432,7 @@ fn run_jstprove(case: &TestCase) -> anyhow::Result<Vec<i64>> {
                 .map(|i| i.elem_type == 1)
                 .unwrap_or(false);
             let scale = if is_float { ALPHA } else { 1.0 };
-            v.iter().map(move |&x| x as f64 / scale).collect::<Vec<_>>()
+            v.iter().map(move |&x| x as f64 / scale)
         })
         .collect();
 

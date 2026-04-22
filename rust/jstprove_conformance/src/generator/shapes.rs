@@ -79,13 +79,14 @@ impl ShapeSpec {
             let lo = self.min_dim;
             let hi = self.max_dim;
             let d = if lo == hi { lo } else { rng.gen_range(lo..=hi) };
-            // Occasionally produce singleton dimensions when allowed
+            // Occasionally produce singleton dimensions when allowed.
+            // Don't clamp singletons back to lo — that would defeat the purpose.
             let d = if self.allow_singleton && rng.gen_bool(0.15) {
                 1
             } else {
-                d
+                d.max(lo)
             };
-            shape.push(d.max(lo));
+            shape.push(d);
         }
 
         // Clamp total elements

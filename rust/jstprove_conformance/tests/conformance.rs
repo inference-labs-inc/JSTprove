@@ -35,7 +35,8 @@ fn run_group(group_name: &str, cases: Vec<TestCase>) {
     };
 
     let mut full_failures = 0usize;
-    let mut reference_only_skipped = 0usize;
+    let mut jstprove_errors_skipped = 0usize;
+    let mut shrunk_ops: std::collections::HashSet<&str> = std::collections::HashSet::new();
 
     for case in &cases {
         match full_runner.run(case) {
@@ -51,8 +52,11 @@ fn run_group(group_name: &str, cases: Vec<TestCase>) {
                 for f in &failures {
                     eprintln!("  {f}");
                 }
-                let shrunken = shrink(case, &full_runner);
-                eprintln!("  minimized inputs: {:?}", shrunken.inputs);
+                if fail_fast || !shrunk_ops.contains(case.op_name) {
+                    shrunk_ops.insert(case.op_name);
+                    let shrunken = shrink(case, &full_runner);
+                    eprintln!("  minimized inputs: {:?}", shrunken.inputs);
+                }
                 if fail_fast {
                     panic!(
                         "[{group_name}] FAIL op={} seed={} — stopping early (set CONFORMANCE_FAIL_FAST=0 to see all failures)",
@@ -62,7 +66,7 @@ fn run_group(group_name: &str, cases: Vec<TestCase>) {
             }
             TestResult::Error(e) => {
                 if case.allow_jstprove_error {
-                    reference_only_skipped += 1;
+                    jstprove_errors_skipped += 1;
                     log::info!(
                         "[{group_name}] SKIP (allow_jstprove_error) op={} seed={}: {e}",
                         case.op_name,
@@ -78,9 +82,9 @@ fn run_group(group_name: &str, cases: Vec<TestCase>) {
         }
     }
 
-    if reference_only_skipped > 0 {
+    if jstprove_errors_skipped > 0 {
         eprintln!(
-            "[{group_name}] {reference_only_skipped} case(s) skipped (reference_only placeholders)"
+            "[{group_name}] {jstprove_errors_skipped} case(s) skipped (allow_jstprove_error)"
         );
     }
 
