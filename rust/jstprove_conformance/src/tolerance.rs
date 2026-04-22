@@ -18,12 +18,14 @@ impl Tolerance {
 
     /// Return true if `actual` is within tolerance of `expected`.
     pub fn check(&self, expected: i64, actual: i64) -> bool {
-        let delta = (expected - actual).unsigned_abs() as i64;
-        if delta <= self.abs {
+        // abs_diff returns u64 and is free of signed overflow even when expected
+        // and actual have opposite signs of large magnitude (e.g. i64::MIN vs i64::MAX).
+        let delta_u = expected.abs_diff(actual);
+        if delta_u <= self.abs as u64 {
             return true;
         }
         if self.rel > 0.0 && expected != 0 {
-            return (delta as f64 / expected.unsigned_abs() as f64) <= self.rel;
+            return (delta_u as f64 / expected.unsigned_abs() as f64) <= self.rel;
         }
         false
     }
@@ -64,5 +66,25 @@ mod tests {
         };
         assert!(t.check(100, 109)); // 9% — within 10%
         assert!(!t.check(100, 115)); // 15% — outside 10%
+    }
+
+    #[test]
+    fn extreme_value_wraparound() {
+        // Opposite-sign extremes: distance between i64::MIN and i64::MAX is u64::MAX
+        // (≈1.8×10¹⁹).  A naive signed subtraction wraps to 0, making EXACT pass
+        // incorrectly.  Verify it correctly fails.
+        assert!(!Tolerance::EXACT.check(i64::MIN, i64::MAX));
+        assert!(!Tolerance::EXACT.check(i64::MAX, i64::MIN));
+
+        // A large abs tolerance that genuinely spans the chosen pair.
+        // Use ±(i64::MAX/2): distance = i64::MAX - 1, which fits in both i64 and u64.
+        let half = i64::MAX / 2;
+        let huge = Tolerance {
+            abs: i64::MAX,
+            rel: 0.0,
+            reason: "extreme test",
+        };
+        assert!(huge.check(half, -half));
+        assert!(huge.check(-half, half));
     }
 }

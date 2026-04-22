@@ -17,6 +17,10 @@ pub struct TestCase {
     /// (cast to f64 before passing to JSTProve's witness_f64).
     pub inputs: Vec<Vec<i64>>,
     pub tolerance: Tolerance,
+    /// When true, the runner skips the length-mismatch failure when the reference
+    /// produces more elements than JSTProve.  Use this for multi-output operators
+    /// (e.g. TopK) where JSTProve intentionally omits secondary outputs (indices).
+    pub ignore_extra_reference_outputs: bool,
 }
 
 /// One element-level mismatch found during a conformance run.
@@ -115,7 +119,9 @@ impl ConformanceRunner {
             }
         }
 
-        if reference_outputs.len() != jstprove_outputs.len() {
+        let lengths_match = reference_outputs.len() == jstprove_outputs.len();
+        let ref_longer = reference_outputs.len() > jstprove_outputs.len();
+        if !(lengths_match || ref_longer && case.ignore_extra_reference_outputs) {
             log::error!(
                 "CONFORMANCE FAIL  op={}  seed={}  output length mismatch: reference={} jstprove={}",
                 case.op_name, case.seed,
@@ -247,7 +253,7 @@ fn run_tract(case: &TestCase) -> anyhow::Result<Vec<i64>> {
             {
                 let bools: Vec<bool> = vals.iter().map(|&v| v != 0).collect();
                 let arr = if shape.is_empty() {
-                    tract_ndarray::Array1::from_vec(bools).into_dyn()
+                    tract_ndarray::arr0(bools[0]).into_dyn()
                 } else {
                     tract_ndarray::ArrayD::from_shape_vec(ix_dyn, bools)
                         .map_err(|e| anyhow::anyhow!("Bool reshape failed: {e}"))?
@@ -260,7 +266,7 @@ fn run_tract(case: &TestCase) -> anyhow::Result<Vec<i64>> {
                 const ALPHA: f64 = 262144.0;
                 let floats: Vec<f32> = vals.iter().map(|&v| (v as f64 / ALPHA) as f32).collect();
                 let arr = if shape.is_empty() {
-                    tract_ndarray::Array1::from_vec(floats).into_dyn()
+                    tract_ndarray::arr0(floats[0]).into_dyn()
                 } else {
                     tract_ndarray::ArrayD::<f32>::from_shape_vec(ix_dyn, floats)
                         .map_err(|e| anyhow::anyhow!("F32 reshape failed: {e}"))?
@@ -268,7 +274,7 @@ fn run_tract(case: &TestCase) -> anyhow::Result<Vec<i64>> {
                 Ok(Tensor::from(arr).into())
             } else {
                 let arr = if shape.is_empty() {
-                    tract_ndarray::Array1::from_vec(vals.clone()).into_dyn()
+                    tract_ndarray::arr0(vals[0]).into_dyn()
                 } else {
                     tract_ndarray::ArrayD::from_shape_vec(ix_dyn, vals.clone())
                         .map_err(|e| anyhow::anyhow!("I64 reshape failed: {e}"))?

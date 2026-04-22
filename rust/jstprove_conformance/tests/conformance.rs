@@ -119,6 +119,7 @@ fn relu_smoke() {
         onnx_bytes,
         inputs: vec![vec![-2_i64, -1, 0, 3]],
         tolerance: Tolerance::EXACT,
+        ignore_extra_reference_outputs: false,
     };
 
     let runner = ConformanceRunner {
@@ -150,6 +151,7 @@ fn relu_reference_only() {
         onnx_bytes,
         inputs: vec![vec![-5_i64, 0, 7]],
         tolerance: Tolerance::EXACT,
+        ignore_extra_reference_outputs: false,
     };
 
     let runner = ConformanceRunner {

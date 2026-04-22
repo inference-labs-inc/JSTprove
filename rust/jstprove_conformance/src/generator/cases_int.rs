@@ -47,6 +47,7 @@ fn make_case(
         onnx_bytes,
         inputs,
         tolerance,
+        ignore_extra_reference_outputs: false,
     }
 }
 
@@ -669,6 +670,7 @@ pub fn structural_cases() -> Vec<TestCase> {
             onnx_bytes,
             inputs: vec![vec![1, 2, 3, 4], vec![10, 20]],
             tolerance: Tolerance::EXACT,
+            ignore_extra_reference_outputs: false,
         }
     });
 

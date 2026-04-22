@@ -106,6 +106,7 @@ fn f01_tile_broadcast() -> RegressionFixture {
             onnx_bytes,
             inputs: vec![vec![1, 2, 3, 4, 5, 6, 7, 8]],
             tolerance: Tolerance::EXACT,
+            ignore_extra_reference_outputs: false,
         },
         allow_jstprove_error: false,
     }
@@ -142,6 +143,7 @@ fn f02_transpose_boundary_perm() -> RegressionFixture {
             onnx_bytes,
             inputs: vec![(1_i64..=24).collect()],
             tolerance: Tolerance::EXACT,
+            ignore_extra_reference_outputs: false,
         },
         allow_jstprove_error: false,
     }
@@ -180,6 +182,7 @@ fn f03_expand_scalar_to_matrix() -> RegressionFixture {
             onnx_bytes,
             inputs: vec![vec![7_i64]],
             tolerance: Tolerance::EXACT,
+            ignore_extra_reference_outputs: false,
         },
         allow_jstprove_error: false,
     }
@@ -223,6 +226,7 @@ fn f04_gather_max_index() -> RegressionFixture {
             onnx_bytes,
             inputs: vec![data],
             tolerance: Tolerance::EXACT,
+            ignore_extra_reference_outputs: false,
         },
         allow_jstprove_error: false,
     }
@@ -239,6 +243,10 @@ fn f05_div_near_zero_divisor() -> RegressionFixture {
     // mixed-sign dividends to exercise the truncation-toward-zero path.
     // The failure was a wrong result when the euclidean-division gadget produced
     // an incorrect remainder direction for negative dividends with divisor=1.
+    //
+    // Note: non-trivial divisors (2, 3, …) reveal a separate unfixed issue
+    // (floor vs truncation for negative dividends).  This fixture intentionally
+    // stays at divisor=1 to document only the historical regression.
     //
     // JSTProve Div requires a constant (initializer) divisor — dynamic divisors
     // are not supported.  The divisor is baked in as a [8] INT64 initializer.
@@ -271,6 +279,7 @@ fn f05_div_near_zero_divisor() -> RegressionFixture {
             onnx_bytes,
             inputs: vec![dividend],
             tolerance: Tolerance::EXACT,
+            ignore_extra_reference_outputs: false,
         },
         allow_jstprove_error: false,
     }
@@ -318,6 +327,7 @@ fn f06_cos_large_angle() -> RegressionFixture {
             onnx_bytes,
             inputs: vec![x_vals],
             tolerance: tol(3),
+            ignore_extra_reference_outputs: false,
         },
         allow_jstprove_error: true, // Cos ~4 M vars — too large for debug-build tests
     }
@@ -365,6 +375,7 @@ fn f07a_reducemax_overflow_boundary() -> RegressionFixture {
             onnx_bytes,
             inputs: vec![vec![v, v - 1, v, v + 1, v - 2, v]],
             tolerance: Tolerance::EXACT,
+            ignore_extra_reference_outputs: false,
         },
         allow_jstprove_error: false,
     }
@@ -409,6 +420,7 @@ fn f07b_reducesum_overflow_boundary() -> RegressionFixture {
             onnx_bytes,
             inputs: vec![vals],
             tolerance: Tolerance::EXACT,
+            ignore_extra_reference_outputs: false,
         },
         allow_jstprove_error: false,
     }
@@ -448,6 +460,7 @@ fn f08a_matmul_overflow_boundary() -> RegressionFixture {
             onnx_bytes,
             inputs: vec![a_vals, b_vals],
             tolerance: tol(2),
+            ignore_extra_reference_outputs: false,
         },
         allow_jstprove_error: false,
     }
@@ -499,6 +512,7 @@ fn f08b_gemm_overflow_boundary() -> RegressionFixture {
             onnx_bytes,
             inputs: vec![a_vals],
             tolerance: tol(2),
+            ignore_extra_reference_outputs: false,
         },
         allow_jstprove_error: false,
     }
@@ -566,6 +580,7 @@ fn f09_layernorm_signed_output() -> RegressionFixture {
             onnx_bytes,
             inputs: vec![x_vals],
             tolerance: tol(5),
+            ignore_extra_reference_outputs: false,
         },
         allow_jstprove_error: false,
     }
@@ -609,6 +624,7 @@ fn f10a_topk_duplicates() -> RegressionFixture {
             onnx_bytes,
             inputs: vec![x_vals],
             tolerance: Tolerance::EXACT,
+            ignore_extra_reference_outputs: true,
         },
         allow_jstprove_error: false,
     }
@@ -637,7 +653,7 @@ fn f10b_topk_k_equals_n() -> RegressionFixture {
     )
     .expect("F-10b: build TopK model failed");
 
-    // Distinct values; sorted descending: [9,6,5,4,3,2,1,1]
+    // Contains a duplicate (1 appears twice); sorted descending: [9,6,5,4,3,2,1,1]
     let x_vals: Vec<i64> = vec![
         3 * ALPHA,
         ALPHA,
@@ -661,6 +677,7 @@ fn f10b_topk_k_equals_n() -> RegressionFixture {
             onnx_bytes,
             inputs: vec![x_vals],
             tolerance: Tolerance::EXACT,
+            ignore_extra_reference_outputs: true,
         },
         allow_jstprove_error: false,
     }
@@ -717,6 +734,7 @@ fn f11_gemm_bias_broadcast() -> RegressionFixture {
             onnx_bytes,
             inputs: vec![a_vals],
             tolerance: tol(2),
+            ignore_extra_reference_outputs: false,
         },
         allow_jstprove_error: false,
     }
@@ -762,6 +780,7 @@ fn f12a_pow_fractional_exponent_0_5() -> RegressionFixture {
             onnx_bytes,
             inputs: vec![x_vals],
             tolerance: tol(2),
+            ignore_extra_reference_outputs: false,
         },
         allow_jstprove_error: false,
     }
@@ -809,6 +828,7 @@ fn f12b_pow_fractional_exponent_1_5() -> RegressionFixture {
             onnx_bytes,
             inputs: vec![x_vals],
             tolerance: tol(2),
+            ignore_extra_reference_outputs: false,
         },
         allow_jstprove_error: false,
     }

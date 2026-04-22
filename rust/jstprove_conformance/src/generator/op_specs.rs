@@ -28,6 +28,9 @@ pub struct OpInputSpec {
     pub needs_rescale: bool,
     /// Tolerance to use for element-wise output comparison.
     pub tolerance: Tolerance,
+    /// When true, all inputs share the same sampled shape (required for elementwise
+    /// binary ops such as Add, Sub, Mul where ONNX demands matching dimensions).
+    pub same_shape_inputs: bool,
 }
 
 // ---------------------------------------------------------------------------
@@ -48,6 +51,7 @@ pub fn relu_spec() -> OpInputSpec {
         attrs: vec![],
         needs_rescale: false,
         tolerance: Tolerance::EXACT,
+        same_shape_inputs: false,
     }
 }
 
@@ -72,6 +76,7 @@ pub fn add_spec() -> OpInputSpec {
         attrs: vec![],
         needs_rescale: false,
         tolerance: Tolerance::EXACT,
+        same_shape_inputs: true,
     }
 }
 
@@ -148,14 +153,16 @@ pub fn gemm_spec(m: usize, k: usize, n: usize) -> OpInputSpec {
             rel: 0.0,
             reason: "Gemm rescale: ±1 LSB rounding from integer division by alpha",
         },
+        same_shape_inputs: false,
     }
 }
 
 /// Build fixed-shape Initializer entries for all `is_initializer = true` TensorSpecs
 /// in an `OpInputSpec`, using the provided pre-sampled flat data slices.
 ///
-/// Returns `(initializers, dynamic_input_names)` where `dynamic_input_names` are the
-/// names of non-initializer inputs (to be used as `input_shapes` in `build_single_op_model`).
+/// Returns `(initializers, dynamic_input_indices)` where `dynamic_input_indices` are the
+/// positional indices (into `spec.inputs`) of non-initializer inputs, used by the caller
+/// to look up sampled shapes and names for `build_single_op_model`.
 pub fn split_initializers(
     spec: &OpInputSpec,
     sampled_data: &[Vec<i64>],

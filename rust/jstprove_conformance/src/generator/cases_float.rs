@@ -84,6 +84,7 @@ pub fn rescaling_cases() -> Vec<TestCase> {
             onnx_bytes,
             inputs: vec![a_vals],
             tolerance: tol(3),
+            ignore_extra_reference_outputs: false,
         });
     }
 
@@ -134,6 +135,7 @@ pub fn rescaling_cases() -> Vec<TestCase> {
             onnx_bytes,
             inputs: vec![a_vals],
             tolerance: tol(3),
+            ignore_extra_reference_outputs: false,
         });
     }
 
@@ -170,6 +172,7 @@ pub fn rescaling_cases() -> Vec<TestCase> {
             onnx_bytes,
             inputs: vec![a_vals, b_alpha],
             tolerance: tol(3),
+            ignore_extra_reference_outputs: false,
         });
     }
 
@@ -232,6 +235,7 @@ pub fn rescaling_cases() -> Vec<TestCase> {
             onnx_bytes,
             inputs: vec![x_vals],
             tolerance: tol(3),
+            ignore_extra_reference_outputs: false,
         });
     }
 
@@ -288,6 +292,7 @@ pub fn rescaling_cases() -> Vec<TestCase> {
             onnx_bytes,
             inputs: vec![x_vals],
             tolerance: tol(3),
+            ignore_extra_reference_outputs: false,
         });
     }
 
@@ -336,6 +341,7 @@ pub fn rescaling_cases() -> Vec<TestCase> {
             onnx_bytes,
             inputs: vec![x_vals],
             tolerance: tol(5),
+            ignore_extra_reference_outputs: false,
         });
     }
 
@@ -392,6 +398,7 @@ pub fn rescaling_cases() -> Vec<TestCase> {
             onnx_bytes,
             inputs: vec![x_vals],
             tolerance: tol(3),
+            ignore_extra_reference_outputs: false,
         });
     }
 
@@ -420,6 +427,7 @@ pub fn rescaling_cases() -> Vec<TestCase> {
             onnx_bytes,
             inputs: vec![a_vals],
             tolerance: Tolerance::EXACT,
+            ignore_extra_reference_outputs: false,
         });
     }
 
@@ -451,6 +459,7 @@ pub fn rescaling_cases() -> Vec<TestCase> {
             onnx_bytes,
             inputs: vec![x_vals],
             tolerance: tol(3),
+            ignore_extra_reference_outputs: false,
         });
     }
 
@@ -484,6 +493,7 @@ pub fn rescaling_cases() -> Vec<TestCase> {
             onnx_bytes,
             inputs: vec![x_vals],
             tolerance: tol(3),
+            ignore_extra_reference_outputs: false,
         });
     }
 
@@ -519,6 +529,7 @@ pub fn transcendental_cases() -> Vec<TestCase> {
             onnx_bytes,
             inputs: vec![x_vals],
             tolerance: tol(5),
+            ignore_extra_reference_outputs: false,
         });
     }
 
@@ -539,6 +550,7 @@ pub fn transcendental_cases() -> Vec<TestCase> {
             onnx_bytes,
             inputs: vec![x_vals],
             tolerance: tol(5),
+            ignore_extra_reference_outputs: false,
         });
     }
 
@@ -562,6 +574,7 @@ pub fn transcendental_cases() -> Vec<TestCase> {
             onnx_bytes,
             inputs: vec![x_vals],
             tolerance: tol(8),
+            ignore_extra_reference_outputs: false,
         });
     }
 
@@ -603,6 +616,7 @@ pub fn transcendental_cases() -> Vec<TestCase> {
             onnx_bytes,
             inputs: vec![x_vals],
             tolerance: tol(8),
+            ignore_extra_reference_outputs: false,
         });
     }
 
@@ -624,6 +638,7 @@ pub fn transcendental_cases() -> Vec<TestCase> {
             onnx_bytes,
             inputs: vec![x_vals],
             tolerance: tol(5),
+            ignore_extra_reference_outputs: false,
         });
     }
 
@@ -653,6 +668,7 @@ pub fn transcendental_cases() -> Vec<TestCase> {
             onnx_bytes,
             inputs: vec![x_vals],
             tolerance: tol(5),
+            ignore_extra_reference_outputs: false,
         });
     }
 
@@ -673,6 +689,7 @@ pub fn transcendental_cases() -> Vec<TestCase> {
             onnx_bytes,
             inputs: vec![x_vals],
             tolerance: tol(5),
+            ignore_extra_reference_outputs: false,
         });
     }
 
@@ -697,6 +714,7 @@ pub fn transcendental_cases() -> Vec<TestCase> {
             onnx_bytes,
             inputs: vec![x_vals],
             tolerance: tol(5),
+            ignore_extra_reference_outputs: false,
         });
     }
 
@@ -744,6 +762,7 @@ pub fn pooling_cases() -> Vec<TestCase> {
             onnx_bytes,
             inputs: vec![x_vals],
             tolerance: tol(3),
+            ignore_extra_reference_outputs: false,
         });
     }
 
@@ -765,6 +784,7 @@ pub fn pooling_cases() -> Vec<TestCase> {
             onnx_bytes,
             inputs: vec![x_vals],
             tolerance: tol(3),
+            ignore_extra_reference_outputs: false,
         });
     }
 
@@ -796,6 +816,7 @@ pub fn pooling_cases() -> Vec<TestCase> {
             onnx_bytes,
             inputs: vec![x_vals],
             tolerance: tol(1), // slight tolerance due to float comparison
+            ignore_extra_reference_outputs: false,
         });
     }
 
@@ -864,6 +885,7 @@ pub fn spatial_cases() -> Vec<TestCase> {
             onnx_bytes,
             inputs: vec![x_vals],
             tolerance: Tolerance::EXACT,
+            ignore_extra_reference_outputs: false,
         });
     }
 
@@ -900,6 +922,7 @@ pub fn spatial_cases() -> Vec<TestCase> {
             onnx_bytes,
             inputs: vec![x_vals],
             tolerance: tol(5),
+            ignore_extra_reference_outputs: false,
         });
     }
 
@@ -923,8 +946,8 @@ pub fn topk_cases() -> Vec<TestCase> {
 
     // ---- TopK: input [1,8] k=3, axis=-1 ----
     // Values output is FLOAT, indices output is INT64.
-    // JSTProve only outputs Values (indices are not in output_data for single-output models).
-    // We test with values output only (FLOAT typed).
+    // JSTProve only outputs Values; compare_outputs=1 ensures the runner only
+    // checks the first (values) output and ignores the INT64 indices output.
     {
         let onnx_bytes = build_single_op_model(
             "TopK",
@@ -957,6 +980,7 @@ pub fn topk_cases() -> Vec<TestCase> {
             onnx_bytes,
             inputs: vec![x_vals],
             tolerance: Tolerance::EXACT,
+            ignore_extra_reference_outputs: true,
         });
     }
 
@@ -993,6 +1017,7 @@ pub fn topk_cases() -> Vec<TestCase> {
             onnx_bytes,
             inputs: vec![x_vals],
             tolerance: Tolerance::EXACT,
+            ignore_extra_reference_outputs: true,
         });
     }
 

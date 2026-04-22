@@ -259,15 +259,30 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for PadLayer {
         }
 
         // Validate constant_value (input[2]): only zero padding is supported.
-        if let Some(cv_name) = layer.inputs.get(2).filter(|n| !n.is_empty())
-            && let Ok(cv) = get_w_or_b::<f64, _>(layer_context.w_and_b_map, cv_name)
-        {
-            let has_nonzero = cv.iter().any(|&v| v != 0.0);
-            if has_nonzero {
+        // Try both float and integer representations; fail if the initializer is
+        // present but cannot be loaded or contains any non-zero element.
+        if let Some(cv_name) = layer.inputs.get(2).filter(|n| !n.is_empty()) {
+            let float_ok = get_w_or_b::<f64, _>(layer_context.w_and_b_map, cv_name)
+                .ok()
+                .map(|cv| cv.iter().all(|&v| v == 0.0));
+            let int_ok = get_w_or_b::<i64, _>(layer_context.w_and_b_map, cv_name)
+                .ok()
+                .map(|cv| cv.iter().all(|&v| v == 0));
+
+            let confirmed_zero = match (float_ok, int_ok) {
+                // At least one representation loaded; all zeros iff both agree or only one loaded
+                (Some(f), Some(i)) => f && i,
+                (Some(f), None) => f,
+                (None, Some(i)) => i,
+                // Could not load as either float or int — reject conservatively
+                (None, None) => false,
+            };
+
+            if !confirmed_zero {
                 return Err(LayerError::Other {
                     layer: LayerKind::Pad,
                     msg: format!(
-                        "Pad constant_value input '{}' is non-zero; only zero padding is supported",
+                        "Pad constant_value input '{}' is non-zero or unreadable; only zero padding is supported",
                         cv_name
                     ),
                 }

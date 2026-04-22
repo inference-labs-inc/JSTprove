@@ -46,13 +46,21 @@ impl TestCaseBuilder {
         let mut rng = ChaCha8Rng::seed_from_u64(seed);
         let spec = &self.spec;
 
-        // Sample shapes and values for every input slot
+        // Sample shapes and values for every input slot.
+        // When same_shape_inputs is true (e.g. Add, Sub), all inputs share the first
+        // sampled shape so elementwise binary ops receive matching-sized tensors.
         let sampled_shapes: Vec<Vec<usize>> = spec
             .inputs
             .iter()
-            .scan((), |_, t| {
-                // For Add: make both inputs have the same shape (use first shape for all)
-                Some(t.shape.sample(&mut rng))
+            .scan(None, |first: &mut Option<Vec<usize>>, t| {
+                if spec.same_shape_inputs {
+                    if first.is_none() {
+                        *first = Some(t.shape.sample(&mut rng));
+                    }
+                    Some(first.as_ref().unwrap().clone())
+                } else {
+                    Some(t.shape.sample(&mut rng))
+                }
             })
             .collect();
 
@@ -114,6 +122,7 @@ impl TestCaseBuilder {
             onnx_bytes,
             inputs: flat_inputs,
             tolerance: spec.tolerance.clone(),
+            ignore_extra_reference_outputs: false,
         }
     }
 }
@@ -182,6 +191,7 @@ pub fn shrink(original: &TestCase, runner: &ConformanceRunner) -> TestCase {
         op_name: best.op_name,
         seed: best.seed,
         tolerance: best.tolerance.clone(),
+        ignore_extra_reference_outputs: false,
     };
     attempts += 1;
     if is_still_failing(&candidate, runner) {
@@ -206,6 +216,7 @@ pub fn shrink(original: &TestCase, runner: &ConformanceRunner) -> TestCase {
                 op_name: best.op_name,
                 seed: best.seed,
                 tolerance: best.tolerance.clone(),
+                ignore_extra_reference_outputs: false,
             };
             attempts += 1;
             if is_still_failing(&candidate, runner) {
@@ -233,6 +244,7 @@ pub fn shrink(original: &TestCase, runner: &ConformanceRunner) -> TestCase {
                 op_name: best.op_name,
                 seed: best.seed,
                 tolerance: best.tolerance.clone(),
+                ignore_extra_reference_outputs: false,
             };
             attempts += 1;
             if is_still_failing(&candidate, runner) {
