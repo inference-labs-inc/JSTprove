@@ -123,6 +123,7 @@ impl TestCaseBuilder {
             inputs: flat_inputs,
             tolerance: spec.tolerance.clone(),
             ignore_extra_reference_outputs: false,
+            allow_jstprove_error: false,
         }
     }
 }
@@ -187,11 +188,7 @@ pub fn shrink(original: &TestCase, runner: &ConformanceRunner) -> TestCase {
 
     let candidate = TestCase {
         inputs: shrunken_inputs.clone(),
-        onnx_bytes: best.onnx_bytes.clone(),
-        op_name: best.op_name,
-        seed: best.seed,
-        tolerance: best.tolerance.clone(),
-        ignore_extra_reference_outputs: false,
+        ..best.clone()
     };
     attempts += 1;
     if is_still_failing(&candidate, runner) {
@@ -212,11 +209,7 @@ pub fn shrink(original: &TestCase, runner: &ConformanceRunner) -> TestCase {
             new_inputs[input_idx][elem_idx] = 0;
             let candidate = TestCase {
                 inputs: new_inputs,
-                onnx_bytes: best.onnx_bytes.clone(),
-                op_name: best.op_name,
-                seed: best.seed,
-                tolerance: best.tolerance.clone(),
-                ignore_extra_reference_outputs: false,
+                ..best.clone()
             };
             attempts += 1;
             if is_still_failing(&candidate, runner) {
@@ -240,11 +233,7 @@ pub fn shrink(original: &TestCase, runner: &ConformanceRunner) -> TestCase {
             new_inputs[input_idx][elem_idx] = smaller;
             let candidate = TestCase {
                 inputs: new_inputs,
-                onnx_bytes: best.onnx_bytes.clone(),
-                op_name: best.op_name,
-                seed: best.seed,
-                tolerance: best.tolerance.clone(),
-                ignore_extra_reference_outputs: false,
+                ..best.clone()
             };
             attempts += 1;
             if is_still_failing(&candidate, runner) {

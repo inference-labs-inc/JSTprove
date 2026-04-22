@@ -2,7 +2,7 @@
 #[derive(Debug, Clone)]
 pub struct Tolerance {
     /// Maximum absolute difference in quantized i64 units (0 = exact match).
-    pub abs: i64,
+    pub abs: u64,
     /// Maximum relative difference as a fraction of the reference value (0.0 = exact).
     pub rel: f64,
     /// Human-readable justification for this bound — required, used in failure messages.
@@ -21,7 +21,7 @@ impl Tolerance {
         // abs_diff returns u64 and is free of signed overflow even when expected
         // and actual have opposite signs of large magnitude (e.g. i64::MIN vs i64::MAX).
         let delta_u = expected.abs_diff(actual);
-        if delta_u <= self.abs as u64 {
+        if delta_u <= self.abs {
             return true;
         }
         if self.rel > 0.0 && expected != 0 {
@@ -80,7 +80,7 @@ mod tests {
         // Use ±(i64::MAX/2): distance = i64::MAX - 1, which fits in both i64 and u64.
         let half = i64::MAX / 2;
         let huge = Tolerance {
-            abs: i64::MAX,
+            abs: u64::MAX,
             rel: 0.0,
             reason: "extreme test",
         };

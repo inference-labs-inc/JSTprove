@@ -33,9 +33,6 @@ fn run_group(group_name: &str, cases: Vec<TestCase>) {
     let full_runner = ConformanceRunner {
         reference_only: false,
     };
-    let ref_runner = ConformanceRunner {
-        reference_only: true,
-    };
 
     let mut full_failures = 0usize;
     let mut reference_only_skipped = 0usize;
@@ -64,11 +61,10 @@ fn run_group(group_name: &str, cases: Vec<TestCase>) {
                 }
             }
             TestResult::Error(e) => {
-                // Check if this is a known reference_only placeholder (passes ref but not full).
-                if matches!(ref_runner.run(case), TestResult::Pass) {
+                if case.allow_jstprove_error {
                     reference_only_skipped += 1;
                     log::info!(
-                        "[{group_name}] SKIP (reference_only) op={} seed={}: {e}",
+                        "[{group_name}] SKIP (allow_jstprove_error) op={} seed={}: {e}",
                         case.op_name,
                         case.seed
                     );
@@ -120,6 +116,7 @@ fn relu_smoke() {
         inputs: vec![vec![-2_i64, -1, 0, 3]],
         tolerance: Tolerance::EXACT,
         ignore_extra_reference_outputs: false,
+        allow_jstprove_error: false,
     };
 
     let runner = ConformanceRunner {
@@ -152,6 +149,7 @@ fn relu_reference_only() {
         inputs: vec![vec![-5_i64, 0, 7]],
         tolerance: Tolerance::EXACT,
         ignore_extra_reference_outputs: false,
+        allow_jstprove_error: false,
     };
 
     let runner = ConformanceRunner {

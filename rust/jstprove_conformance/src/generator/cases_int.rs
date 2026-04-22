@@ -48,6 +48,7 @@ fn make_case(
         inputs,
         tolerance,
         ignore_extra_reference_outputs: false,
+        allow_jstprove_error: false,
     }
 }
 
@@ -671,6 +672,7 @@ pub fn structural_cases() -> Vec<TestCase> {
             inputs: vec![vec![1, 2, 3, 4], vec![10, 20]],
             tolerance: Tolerance::EXACT,
             ignore_extra_reference_outputs: false,
+            allow_jstprove_error: false,
         }
     });
 

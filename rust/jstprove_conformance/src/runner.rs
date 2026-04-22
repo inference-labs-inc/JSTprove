@@ -21,6 +21,9 @@ pub struct TestCase {
     /// produces more elements than JSTProve.  Use this for multi-output operators
     /// (e.g. TopK) where JSTProve intentionally omits secondary outputs (indices).
     pub ignore_extra_reference_outputs: bool,
+    /// When true, a JSTProve error is treated as a skip rather than a test failure.
+    /// Use for ops not yet implemented in the Expander circuit backend.
+    pub allow_jstprove_error: bool,
 }
 
 /// One element-level mismatch found during a conformance run.
@@ -32,7 +35,7 @@ pub struct Failure {
     pub index: usize,
     pub reference_value: i64,
     pub jstprove_value: i64,
-    pub delta: i64,
+    pub delta: u64,
 }
 
 impl std::fmt::Display for Failure {
@@ -103,7 +106,7 @@ impl ConformanceRunner {
             let ref_val = reference_outputs[i];
             let jst_val = jstprove_outputs[i];
             if !case.tolerance.check(ref_val, jst_val) {
-                let delta = (ref_val - jst_val).unsigned_abs() as i64;
+                let delta = ref_val.abs_diff(jst_val);
                 log::error!(
                     "CONFORMANCE FAIL  op={}  seed={}\n  index={}  reference={}  jstprove={}  delta={}\n  To reproduce: seed={}",
                     case.op_name, case.seed, i, ref_val, jst_val, delta, case.seed
@@ -134,7 +137,7 @@ impl ConformanceRunner {
                 index: usize::MAX,
                 reference_value: reference_outputs.len() as i64,
                 jstprove_value: jstprove_outputs.len() as i64,
-                delta: (reference_outputs.len() as i64 - jstprove_outputs.len() as i64).abs(),
+                delta: reference_outputs.len().abs_diff(jstprove_outputs.len()) as u64,
             });
         }
 
@@ -253,6 +256,9 @@ fn run_tract(case: &TestCase) -> anyhow::Result<Vec<i64>> {
             {
                 let bools: Vec<bool> = vals.iter().map(|&v| v != 0).collect();
                 let arr = if shape.is_empty() {
+                    if bools.is_empty() {
+                        return Err(anyhow::anyhow!("empty scalar BOOL input at index {idx}"));
+                    }
                     tract_ndarray::arr0(bools[0]).into_dyn()
                 } else {
                     tract_ndarray::ArrayD::from_shape_vec(ix_dyn, bools)
@@ -266,6 +272,9 @@ fn run_tract(case: &TestCase) -> anyhow::Result<Vec<i64>> {
                 const ALPHA: f64 = 262144.0;
                 let floats: Vec<f32> = vals.iter().map(|&v| (v as f64 / ALPHA) as f32).collect();
                 let arr = if shape.is_empty() {
+                    if floats.is_empty() {
+                        return Err(anyhow::anyhow!("empty scalar FLOAT input at index {idx}"));
+                    }
                     tract_ndarray::arr0(floats[0]).into_dyn()
                 } else {
                     tract_ndarray::ArrayD::<f32>::from_shape_vec(ix_dyn, floats)
@@ -274,6 +283,9 @@ fn run_tract(case: &TestCase) -> anyhow::Result<Vec<i64>> {
                 Ok(Tensor::from(arr).into())
             } else {
                 let arr = if shape.is_empty() {
+                    if vals.is_empty() {
+                        return Err(anyhow::anyhow!("empty scalar INT64 input at index {idx}"));
+                    }
                     tract_ndarray::arr0(vals[0]).into_dyn()
                 } else {
                     tract_ndarray::ArrayD::from_shape_vec(ix_dyn, vals.clone())

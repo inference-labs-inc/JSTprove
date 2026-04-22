@@ -20,7 +20,7 @@ const INT64: i32 = 7;
 /// α = 2^18 = 262144
 const ALPHA: i64 = 262144;
 
-fn tol(abs: i64) -> Tolerance {
+fn tol(abs: u64) -> Tolerance {
     Tolerance {
         abs,
         rel: 0.0,
@@ -85,6 +85,7 @@ pub fn rescaling_cases() -> Vec<TestCase> {
             inputs: vec![a_vals],
             tolerance: tol(3),
             ignore_extra_reference_outputs: false,
+            allow_jstprove_error: false,
         });
     }
 
@@ -136,6 +137,7 @@ pub fn rescaling_cases() -> Vec<TestCase> {
             inputs: vec![a_vals],
             tolerance: tol(3),
             ignore_extra_reference_outputs: false,
+            allow_jstprove_error: false,
         });
     }
 
@@ -173,6 +175,7 @@ pub fn rescaling_cases() -> Vec<TestCase> {
             inputs: vec![a_vals, b_alpha],
             tolerance: tol(3),
             ignore_extra_reference_outputs: false,
+            allow_jstprove_error: false,
         });
     }
 
@@ -236,6 +239,7 @@ pub fn rescaling_cases() -> Vec<TestCase> {
             inputs: vec![x_vals],
             tolerance: tol(3),
             ignore_extra_reference_outputs: false,
+            allow_jstprove_error: false,
         });
     }
 
@@ -293,6 +297,7 @@ pub fn rescaling_cases() -> Vec<TestCase> {
             inputs: vec![x_vals],
             tolerance: tol(3),
             ignore_extra_reference_outputs: false,
+            allow_jstprove_error: false,
         });
     }
 
@@ -342,6 +347,7 @@ pub fn rescaling_cases() -> Vec<TestCase> {
             inputs: vec![x_vals],
             tolerance: tol(5),
             ignore_extra_reference_outputs: false,
+            allow_jstprove_error: false,
         });
     }
 
@@ -399,6 +405,7 @@ pub fn rescaling_cases() -> Vec<TestCase> {
             inputs: vec![x_vals],
             tolerance: tol(3),
             ignore_extra_reference_outputs: false,
+            allow_jstprove_error: false,
         });
     }
 
@@ -428,6 +435,7 @@ pub fn rescaling_cases() -> Vec<TestCase> {
             inputs: vec![a_vals],
             tolerance: Tolerance::EXACT,
             ignore_extra_reference_outputs: false,
+            allow_jstprove_error: false,
         });
     }
 
@@ -460,6 +468,7 @@ pub fn rescaling_cases() -> Vec<TestCase> {
             inputs: vec![x_vals],
             tolerance: tol(3),
             ignore_extra_reference_outputs: false,
+            allow_jstprove_error: false,
         });
     }
 
@@ -494,6 +503,7 @@ pub fn rescaling_cases() -> Vec<TestCase> {
             inputs: vec![x_vals],
             tolerance: tol(3),
             ignore_extra_reference_outputs: false,
+            allow_jstprove_error: false,
         });
     }
 
@@ -530,6 +540,7 @@ pub fn transcendental_cases() -> Vec<TestCase> {
             inputs: vec![x_vals],
             tolerance: tol(5),
             ignore_extra_reference_outputs: false,
+            allow_jstprove_error: false,
         });
     }
 
@@ -551,6 +562,7 @@ pub fn transcendental_cases() -> Vec<TestCase> {
             inputs: vec![x_vals],
             tolerance: tol(5),
             ignore_extra_reference_outputs: false,
+            allow_jstprove_error: false,
         });
     }
 
@@ -575,6 +587,7 @@ pub fn transcendental_cases() -> Vec<TestCase> {
             inputs: vec![x_vals],
             tolerance: tol(8),
             ignore_extra_reference_outputs: false,
+            allow_jstprove_error: false,
         });
     }
 
@@ -617,6 +630,7 @@ pub fn transcendental_cases() -> Vec<TestCase> {
             inputs: vec![x_vals],
             tolerance: tol(8),
             ignore_extra_reference_outputs: false,
+            allow_jstprove_error: false,
         });
     }
 
@@ -639,6 +653,7 @@ pub fn transcendental_cases() -> Vec<TestCase> {
             inputs: vec![x_vals],
             tolerance: tol(5),
             ignore_extra_reference_outputs: false,
+            allow_jstprove_error: false,
         });
     }
 
@@ -669,6 +684,7 @@ pub fn transcendental_cases() -> Vec<TestCase> {
             inputs: vec![x_vals],
             tolerance: tol(5),
             ignore_extra_reference_outputs: false,
+            allow_jstprove_error: false,
         });
     }
 
@@ -690,6 +706,7 @@ pub fn transcendental_cases() -> Vec<TestCase> {
             inputs: vec![x_vals],
             tolerance: tol(5),
             ignore_extra_reference_outputs: false,
+            allow_jstprove_error: false,
         });
     }
 
@@ -715,6 +732,7 @@ pub fn transcendental_cases() -> Vec<TestCase> {
             inputs: vec![x_vals],
             tolerance: tol(5),
             ignore_extra_reference_outputs: false,
+            allow_jstprove_error: false,
         });
     }
 
@@ -763,6 +781,7 @@ pub fn pooling_cases() -> Vec<TestCase> {
             inputs: vec![x_vals],
             tolerance: tol(3),
             ignore_extra_reference_outputs: false,
+            allow_jstprove_error: false,
         });
     }
 
@@ -785,6 +804,7 @@ pub fn pooling_cases() -> Vec<TestCase> {
             inputs: vec![x_vals],
             tolerance: tol(3),
             ignore_extra_reference_outputs: false,
+            allow_jstprove_error: false,
         });
     }
 
@@ -817,6 +837,7 @@ pub fn pooling_cases() -> Vec<TestCase> {
             inputs: vec![x_vals],
             tolerance: tol(1), // slight tolerance due to float comparison
             ignore_extra_reference_outputs: false,
+            allow_jstprove_error: false,
         });
     }
 
@@ -886,6 +907,7 @@ pub fn spatial_cases() -> Vec<TestCase> {
             inputs: vec![x_vals],
             tolerance: Tolerance::EXACT,
             ignore_extra_reference_outputs: false,
+            allow_jstprove_error: false,
         });
     }
 
@@ -923,6 +945,7 @@ pub fn spatial_cases() -> Vec<TestCase> {
             inputs: vec![x_vals],
             tolerance: tol(5),
             ignore_extra_reference_outputs: false,
+            allow_jstprove_error: false,
         });
     }
 
@@ -981,6 +1004,7 @@ pub fn topk_cases() -> Vec<TestCase> {
             inputs: vec![x_vals],
             tolerance: Tolerance::EXACT,
             ignore_extra_reference_outputs: true,
+            allow_jstprove_error: false,
         });
     }
 
@@ -1018,6 +1042,7 @@ pub fn topk_cases() -> Vec<TestCase> {
             inputs: vec![x_vals],
             tolerance: Tolerance::EXACT,
             ignore_extra_reference_outputs: true,
+            allow_jstprove_error: false,
         });
     }
 

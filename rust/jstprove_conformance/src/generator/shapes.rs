@@ -13,6 +13,9 @@ pub struct ShapeSpec {
     pub max_elements: usize,
     /// Allow dimensions of size 1 (for broadcast testing).
     pub allow_singleton: bool,
+    /// When set, `sample()` always returns exactly this shape, ignoring all other fields.
+    /// Use for ops where contraction dimensions must be pinned (e.g. Gemm A=[M,K], B=[K,N]).
+    pub fixed_dims: Option<Vec<usize>>,
 }
 
 impl ShapeSpec {
@@ -23,6 +26,7 @@ impl ShapeSpec {
         max_dim: 1,
         max_elements: 1,
         allow_singleton: true,
+        fixed_dims: None,
     };
 
     pub const VEC: ShapeSpec = ShapeSpec {
@@ -32,6 +36,7 @@ impl ShapeSpec {
         max_dim: 512,
         max_elements: 512,
         allow_singleton: true,
+        fixed_dims: None,
     };
 
     pub const MATRIX: ShapeSpec = ShapeSpec {
@@ -41,6 +46,7 @@ impl ShapeSpec {
         max_dim: 128,
         max_elements: 16384,
         allow_singleton: true,
+        fixed_dims: None,
     };
 
     pub const TENSOR: ShapeSpec = ShapeSpec {
@@ -50,10 +56,14 @@ impl ShapeSpec {
         max_dim: 64,
         max_elements: 65536,
         allow_singleton: true,
+        fixed_dims: None,
     };
 
     /// Generate a concrete shape from this spec using the given RNG.
     pub fn sample(&self, rng: &mut impl Rng) -> Vec<usize> {
+        if let Some(ref dims) = self.fixed_dims {
+            return dims.clone();
+        }
         let rank = if self.min_rank == self.max_rank {
             self.min_rank
         } else {

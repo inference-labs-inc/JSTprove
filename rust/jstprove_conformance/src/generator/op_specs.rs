@@ -91,16 +91,17 @@ pub fn gemm_spec(m: usize, k: usize, n: usize) -> OpInputSpec {
     OpInputSpec {
         op_name: "Gemm",
         inputs: vec![
-            // Dynamic input A [M, K]
+            // Dynamic input A [M, K] — pinned to exact [m, k] so the contraction dim matches B
             TensorSpec {
                 name: "A",
                 shape: ShapeSpec {
                     min_rank: 2,
                     max_rank: 2,
-                    min_dim: 1,
+                    min_dim: m as usize,
                     max_dim: k as usize,
                     max_elements: (m * k) as usize,
                     allow_singleton: false,
+                    fixed_dims: Some(vec![m as usize, k as usize]),
                 },
                 values: ValueSpec::Uniform {
                     lo: -(super::values::ALPHA * 4),
@@ -108,16 +109,17 @@ pub fn gemm_spec(m: usize, k: usize, n: usize) -> OpInputSpec {
                 },
                 is_initializer: false,
             },
-            // Initializer B [K, N]
+            // Initializer B [K, N] — pinned to exact [k, n] so the contraction dim matches A
             TensorSpec {
                 name: "B",
                 shape: ShapeSpec {
                     min_rank: 2,
                     max_rank: 2,
-                    min_dim: 1,
+                    min_dim: k as usize,
                     max_dim: n as usize,
                     max_elements: (k * n) as usize,
                     allow_singleton: false,
+                    fixed_dims: Some(vec![k as usize, n as usize]),
                 },
                 values: ValueSpec::Uniform {
                     lo: -(super::values::ALPHA),
@@ -125,7 +127,7 @@ pub fn gemm_spec(m: usize, k: usize, n: usize) -> OpInputSpec {
                 },
                 is_initializer: true,
             },
-            // Initializer bias [N]
+            // Initializer bias [N] — already pinned via min_dim=max_dim=n
             TensorSpec {
                 name: "C",
                 shape: ShapeSpec {
@@ -135,6 +137,7 @@ pub fn gemm_spec(m: usize, k: usize, n: usize) -> OpInputSpec {
                     max_dim: n as usize,
                     max_elements: n as usize,
                     allow_singleton: false,
+                    fixed_dims: None,
                 },
                 values: ValueSpec::Uniform {
                     lo: -(super::values::ALPHA * super::values::ALPHA),

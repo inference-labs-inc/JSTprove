@@ -16,7 +16,7 @@ const INT64: i32 = 7;
 /// α = 2^18 = 262144
 const ALPHA: i64 = 262144;
 
-fn tol(abs: i64) -> Tolerance {
+fn tol(abs: u64) -> Tolerance {
     Tolerance {
         abs,
         rel: 0.0,
@@ -107,6 +107,7 @@ fn f01_tile_broadcast() -> RegressionFixture {
             inputs: vec![vec![1, 2, 3, 4, 5, 6, 7, 8]],
             tolerance: Tolerance::EXACT,
             ignore_extra_reference_outputs: false,
+            allow_jstprove_error: false,
         },
         allow_jstprove_error: false,
     }
@@ -144,6 +145,7 @@ fn f02_transpose_boundary_perm() -> RegressionFixture {
             inputs: vec![(1_i64..=24).collect()],
             tolerance: Tolerance::EXACT,
             ignore_extra_reference_outputs: false,
+            allow_jstprove_error: false,
         },
         allow_jstprove_error: false,
     }
@@ -183,6 +185,7 @@ fn f03_expand_scalar_to_matrix() -> RegressionFixture {
             inputs: vec![vec![7_i64]],
             tolerance: Tolerance::EXACT,
             ignore_extra_reference_outputs: false,
+            allow_jstprove_error: false,
         },
         allow_jstprove_error: false,
     }
@@ -227,6 +230,7 @@ fn f04_gather_max_index() -> RegressionFixture {
             inputs: vec![data],
             tolerance: Tolerance::EXACT,
             ignore_extra_reference_outputs: false,
+            allow_jstprove_error: false,
         },
         allow_jstprove_error: false,
     }
@@ -280,6 +284,7 @@ fn f05_div_near_zero_divisor() -> RegressionFixture {
             inputs: vec![dividend],
             tolerance: Tolerance::EXACT,
             ignore_extra_reference_outputs: false,
+            allow_jstprove_error: false,
         },
         allow_jstprove_error: false,
     }
@@ -328,6 +333,7 @@ fn f06_cos_large_angle() -> RegressionFixture {
             inputs: vec![x_vals],
             tolerance: tol(3),
             ignore_extra_reference_outputs: false,
+            allow_jstprove_error: false,
         },
         allow_jstprove_error: true, // Cos ~4 M vars — too large for debug-build tests
     }
@@ -376,6 +382,7 @@ fn f07a_reducemax_overflow_boundary() -> RegressionFixture {
             inputs: vec![vec![v, v - 1, v, v + 1, v - 2, v]],
             tolerance: Tolerance::EXACT,
             ignore_extra_reference_outputs: false,
+            allow_jstprove_error: false,
         },
         allow_jstprove_error: false,
     }
@@ -421,6 +428,7 @@ fn f07b_reducesum_overflow_boundary() -> RegressionFixture {
             inputs: vec![vals],
             tolerance: Tolerance::EXACT,
             ignore_extra_reference_outputs: false,
+            allow_jstprove_error: false,
         },
         allow_jstprove_error: false,
     }
@@ -461,6 +469,7 @@ fn f08a_matmul_overflow_boundary() -> RegressionFixture {
             inputs: vec![a_vals, b_vals],
             tolerance: tol(2),
             ignore_extra_reference_outputs: false,
+            allow_jstprove_error: false,
         },
         allow_jstprove_error: false,
     }
@@ -513,6 +522,7 @@ fn f08b_gemm_overflow_boundary() -> RegressionFixture {
             inputs: vec![a_vals],
             tolerance: tol(2),
             ignore_extra_reference_outputs: false,
+            allow_jstprove_error: false,
         },
         allow_jstprove_error: false,
     }
@@ -581,6 +591,7 @@ fn f09_layernorm_signed_output() -> RegressionFixture {
             inputs: vec![x_vals],
             tolerance: tol(5),
             ignore_extra_reference_outputs: false,
+            allow_jstprove_error: false,
         },
         allow_jstprove_error: false,
     }
@@ -625,6 +636,7 @@ fn f10a_topk_duplicates() -> RegressionFixture {
             inputs: vec![x_vals],
             tolerance: Tolerance::EXACT,
             ignore_extra_reference_outputs: true,
+            allow_jstprove_error: false,
         },
         allow_jstprove_error: false,
     }
@@ -678,6 +690,7 @@ fn f10b_topk_k_equals_n() -> RegressionFixture {
             inputs: vec![x_vals],
             tolerance: Tolerance::EXACT,
             ignore_extra_reference_outputs: true,
+            allow_jstprove_error: false,
         },
         allow_jstprove_error: false,
     }
@@ -735,6 +748,7 @@ fn f11_gemm_bias_broadcast() -> RegressionFixture {
             inputs: vec![a_vals],
             tolerance: tol(2),
             ignore_extra_reference_outputs: false,
+            allow_jstprove_error: false,
         },
         allow_jstprove_error: false,
     }
@@ -781,6 +795,7 @@ fn f12a_pow_fractional_exponent_0_5() -> RegressionFixture {
             inputs: vec![x_vals],
             tolerance: tol(2),
             ignore_extra_reference_outputs: false,
+            allow_jstprove_error: false,
         },
         allow_jstprove_error: false,
     }
@@ -829,6 +844,7 @@ fn f12b_pow_fractional_exponent_1_5() -> RegressionFixture {
             inputs: vec![x_vals],
             tolerance: tol(2),
             ignore_extra_reference_outputs: false,
+            allow_jstprove_error: false,
         },
         allow_jstprove_error: false,
     }
