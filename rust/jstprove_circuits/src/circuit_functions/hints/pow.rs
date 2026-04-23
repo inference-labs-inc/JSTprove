@@ -184,8 +184,7 @@ mod tests {
         let result = run_hint(x_q, exp_q, scale);
         assert_eq!(
             result, scale as i64,
-            "0^0: expected 1.0 encoded as {}, got {result}",
-            scale
+            "0^0: expected 1.0 encoded as {scale}, got {result}",
         );
     }
 
@@ -198,8 +197,7 @@ mod tests {
         let result = run_hint(x_q, exp_q, scale);
         assert_eq!(
             result, scale as i64,
-            "(-2)^0.5: expected 1.0 encoded as {}, got {result}",
-            scale
+            "(-2)^0.5: expected 1.0 encoded as {scale}, got {result}",
         );
     }
 }

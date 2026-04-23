@@ -1,0 +1,30 @@
+[package]
+name = "jstprove-conformance"
+version.workspace = true
+edition = "2021"
+
+[features]
+# Reduce per-op case counts for CI runs (targets <5 min on ubuntu-latest).
+# Enable with: cargo test -p jstprove-conformance --features ci
+ci = []
+
+[dependencies]
+anyhow = "1"
+thiserror = { workspace = true }
+log = { workspace = true }
+env_logger = { workspace = true }
+tempfile = "3"
+prost = "0.13"
+rand = { workspace = true }
+rand_chacha = { workspace = true }
+jstprove-onnx = { path = "../jstprove_onnx" }
+jstprove_circuits = { path = "../jstprove_circuits" }
+tract-onnx = "0.21"
+
+[dev-dependencies]
+env_logger = { workspace = true }
+
+[[test]]
+name = "conformance"
+path = "tests/conformance.rs"
+harness = true

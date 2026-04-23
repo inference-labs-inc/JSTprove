@@ -166,7 +166,7 @@ impl<C: Config> common::Instruction<C> for Instruction<C> {
             _ => Ok(()),
         }
     }
-    fn eval_unsafe(&self, values: &[CircuitField<C>]) -> EvalResult<C> {
+    fn eval_unsafe(&self, values: &[CircuitField<C>]) -> EvalResult<'_, C> {
         match self {
             Instruction::LinComb(lc) => EvalResult::Value(lc.eval(values)),
             Instruction::Mul(inputs) => {
@@ -209,7 +209,7 @@ impl<C: Config> Instruction<C> {
         values: &[CircuitField<C>],
         public_inputs: &[CircuitField<C>],
         hint_caller: &impl HintCaller<CircuitField<C>>,
-    ) -> EvalResult<C> {
+    ) -> EvalResult<'_, C> {
         if let Instruction::ConstantLike(coef) = self {
             return match coef {
                 Coef::Constant(c) => EvalResult::Value(*c),

@@ -35,7 +35,7 @@ use crate::runner::schema::{
 use crate::runner::version::jstprove_artifact_version;
 use expander_compiler::expander_binary::executor;
 
-pub(crate) fn auto_decompress_bytes(data: &[u8]) -> Result<Cow<[u8]>, RunError> {
+pub(crate) fn auto_decompress_bytes(data: &[u8]) -> Result<Cow<'_, [u8]>, RunError> {
     jstprove_io::auto_decompress_bytes(data)
         .map_err(|e| RunError::Deserialize(format!("zstd decompress: {e}")))
 }
@@ -619,17 +619,16 @@ fn run_verification<C: Config>(
         .clone_from(&simd_input);
     expander_circuit.public_input.clone_from(&simd_public_input);
 
-    if let Some(expected) = expected_public_inputs {
-        if expected.len() != expander_circuit.public_input.len()
+    if let Some(expected) = expected_public_inputs
+        && (expected.len() != expander_circuit.public_input.len()
             || expected
                 .iter()
                 .zip(&expander_circuit.public_input)
-                .any(|(pv, actual)| *actual != (*pv).into())
-        {
-            return Err(RunError::Verify(
-                "public inputs from witness do not match the supplied inputs/outputs".into(),
-            ));
-        }
+                .any(|(pv, actual)| *actual != (*pv).into()))
+    {
+        return Err(RunError::Verify(
+            "public inputs from witness do not match the supplied inputs/outputs".into(),
+        ));
     }
 
     let file = std::fs::File::open(proof_path).map_err(|e| RunError::Io {
@@ -2066,12 +2065,12 @@ pub fn get_proof_config(
     matches: &clap::ArgMatches,
     metadata: Option<&CircuitParams>,
 ) -> Result<crate::proof_config::ProofConfig, String> {
-    if matches.value_source("curve") == Some(clap::parser::ValueSource::CommandLine) {
-        if let Some(s) = matches.get_one::<String>("curve") {
-            return s
-                .parse::<crate::proof_config::ProofConfig>()
-                .map_err(|e| format!("invalid --curve '{s}': {e}"));
-        }
+    if matches.value_source("curve") == Some(clap::parser::ValueSource::CommandLine)
+        && let Some(s) = matches.get_one::<String>("curve")
+    {
+        return s
+            .parse::<crate::proof_config::ProofConfig>()
+            .map_err(|e| format!("invalid --curve '{s}': {e}"));
     }
     match metadata {
         Some(meta) => match meta.proof_config {
@@ -2204,10 +2203,10 @@ where
 
             let has_onnx_context =
                 crate::io::io_reader::onnx_context::OnnxContext::get_architecture().is_ok();
-            if let Ok(input_path) = get_arg(matches, "input") {
-                if has_onnx_context {
-                    run_debug_verify_onnx::<C, CircuitType>(&input_path, &circuit_path, mode)?;
-                }
+            if let Ok(input_path) = get_arg(matches, "input")
+                && has_onnx_context
+            {
+                run_debug_verify_onnx::<C, CircuitType>(&input_path, &circuit_path, mode)?;
             }
 
             match result {

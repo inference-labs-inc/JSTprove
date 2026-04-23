@@ -309,12 +309,12 @@ pub fn collect_all_shapes(layers: &[ONNXLayer], ios: &[ONNXIO]) -> HashMap<Strin
         for input_name in &layer.inputs {
             if input_name.ends_with(FLAT2D_SUFFIX) && !result.contains_key(input_name) {
                 let base_name = &input_name[..input_name.len() - FLAT2D_SUFFIX.len()];
-                if let Some(base_shape) = result.get(base_name) {
-                    if base_shape.len() >= 2 {
-                        let d0 = base_shape[0];
-                        let rest: usize = base_shape[1..].iter().product();
-                        flat2d_entries.push((input_name.clone(), vec![d0, rest]));
-                    }
+                if let Some(base_shape) = result.get(base_name)
+                    && base_shape.len() >= 2
+                {
+                    let d0 = base_shape[0];
+                    let rest: usize = base_shape[1..].iter().product();
+                    flat2d_entries.push((input_name.clone(), vec![d0, rest]));
                 }
             }
         }

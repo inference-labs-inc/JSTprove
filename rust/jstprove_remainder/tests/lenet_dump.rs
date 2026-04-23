@@ -15,13 +15,9 @@ fn test_dump_lenet_structure() {
     }
     println!("=== Initializers ===");
     for (name, td) in &parsed.initializers {
-        println!(
-            "  {} dims={:?} floats={} ints={}",
-            name,
-            td.dims,
-            td.float_data.len(),
-            td.int_data.len()
-        );
+        let floats = td.float_data.len();
+        let ints = td.int_data.len();
+        println!("  {name} dims={:?} floats={floats} ints={ints}", td.dims);
     }
     println!("=== Nodes ===");
     for node in &parsed.nodes {
@@ -30,7 +26,7 @@ fn test_dump_lenet_structure() {
             node.name, node.op_type, node.inputs, node.outputs
         );
         for (k, v) in &node.attributes {
-            println!("    attr {}: {:?}", k, v);
+            println!("    attr {k}: {v:?}");
         }
     }
 
@@ -40,9 +36,7 @@ fn test_dump_lenet_structure() {
         println!("  [{}] {} ({:?})", layer.id, layer.name, layer.op_type);
         println!("    inputs: {:?}", layer.inputs);
         println!("    outputs: {:?}", layer.outputs);
-        println!(
-            "    weights: {:?}",
-            layer.weights.keys().collect::<Vec<_>>()
-        );
+        let weights: Vec<_> = layer.weights.keys().collect();
+        println!("    weights: {weights:?}");
     }
 }
