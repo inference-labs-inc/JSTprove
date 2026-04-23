@@ -371,12 +371,12 @@ fn f07a_reducemax_overflow_boundary() -> RegressionFixture {
 
     let v: i64 = 7;
     RegressionFixture {
-        id: "reducemax_overflow_boundary",
+        id: "reducemax_keepdims0_small_input",
         fixed_in: "historical fix (pre-main)",
-        failure_description: "ReduceMax produced overflow when the LogUp range check added a \
-                              shift_offset to the value before the check, causing the shifted \
-                              value to overflow i64.  Exact reproducer not recovered; fixture \
-                              verifies the corrected path with keepdims=0.",
+        failure_description: "ReduceMax with keepdims=0 produced wrong output due to incorrect \
+                              LogUp range-check shift.  Exact large-value reproducer not \
+                              recovered (INT64 witness is capped at 2^53); this fixture \
+                              verifies the corrected path with a representative small input.",
         case: TestCase {
             op_name: "ReduceMax",
             seed: 0xF007,
@@ -441,12 +441,10 @@ fn f07b_reducesum_overflow_boundary() -> RegressionFixture {
 // ---------------------------------------------------------------------------
 
 fn f08a_matmul_overflow_boundary() -> RegressionFixture {
-    // NOTE: Exact input from PR #262 not recovered verbatim; using the boundary
-    // values described in the task spec: A = B = ALPHA * 32767.
-    // The intermediate per-element product before rescaling is
-    // (ALPHA * 32767)^2 = 32767^2 * ALPHA^2 ≈ 7.4e19, which exceeds i64::MAX
-    // and triggered overflow in the accumulation path on pre-fix builds.
-    // On current main the circuit handles this correctly.
+    // MatMul with A = 32767.0 and B = 1.0.
+    // Per-term product = 32767·α × α = 32767·α² ≈ 2.25×10^15 — fits in i64.
+    // NOTE: The fully saturated scenario A = B = 32767.0 (each term ≈ 7.4e19 > i64::MAX)
+    // is still broken and cannot yet be used here (accumulator overflow not fixed).
     let onnx_bytes = build_single_op_model(
         "MatMul",
         &[("A", &[4, 4], FLOAT), ("B", &[4, 4], FLOAT)],
@@ -459,11 +457,11 @@ fn f08a_matmul_overflow_boundary() -> RegressionFixture {
     let a_vals: Vec<i64> = vec![32767 * ALPHA; 16];
     let b_vals: Vec<i64> = vec![ALPHA; 16]; // B = 1.0
     RegressionFixture {
-        id: "matmul_overflow_boundary",
+        id: "matmul_large_a_unit_b",
         fixed_in: "PR #262",
-        failure_description: "MatMul with A = 32767 * ALPHA and B = 1.0 * ALPHA produced \
-                              overflow in the per-element accumulation step before the α² → α \
-                              rescaling, because the intermediate value exceeded i64::MAX.",
+        failure_description: "MatMul with A = 32767.0 and B = 1.0 produced wrong output \
+                              in the rescaling path on pre-fix builds (per-term product \
+                              = 32767·α² ≈ 2.25×10^15).",
         case: TestCase {
             op_name: "MatMul",
             seed: 0xF009,
@@ -482,9 +480,10 @@ fn f08a_matmul_overflow_boundary() -> RegressionFixture {
 // ---------------------------------------------------------------------------
 
 fn f08b_gemm_overflow_boundary() -> RegressionFixture {
-    // Gemm: A dynamic FLOAT [4, 4] = 1.0; B FloatInit [4, 4] = 32767.0;
-    // bias C FloatInit [4] = 0.0.  Exercises the same overflow path as F-08a
-    // but through the Gemm circuit (different rescaling path).
+    // Gemm: A dynamic FLOAT [4, 4] = 1.0; B FloatInit [4, 4] = 32767.0; bias = 0.0.
+    // Per-term product = α × 32767·α = 32767·α² ≈ 2.25×10^15 — fits in i64.
+    // NOTE: The fully saturated scenario A = B = 32767.0 (each term ≈ 7.4e19 > i64::MAX)
+    // is still broken and cannot yet be used here (accumulator overflow not fixed).
     let b_data: Vec<f32> = vec![32767.0_f32; 16];
     let c_data: Vec<f32> = vec![0.0_f32; 4];
     let onnx_bytes = build_single_op_model_ordered(
@@ -511,12 +510,11 @@ fn f08b_gemm_overflow_boundary() -> RegressionFixture {
 
     let a_vals: Vec<i64> = vec![ALPHA; 16]; // A = 1.0
     RegressionFixture {
-        id: "gemm_overflow_boundary",
+        id: "gemm_unit_a_large_b",
         fixed_in: "PR #262",
-        failure_description: "Gemm with A = 1.0 and weight B = 32767.0 produced overflow \
-                              in the accumulation before rescaling, because \
-                              A_q * B_q = ALPHA * (32767 * ALPHA) = 32767 * ALPHA^2 per term \
-                              and the 4-element dot product overflowed i64.",
+        failure_description: "Gemm with A = 1.0 and B = 32767.0 weight produced wrong output \
+                              in the rescaling path on pre-fix builds (per-term product \
+                              = α × 32767·α = 32767·α² ≈ 2.25×10^15).",
         case: TestCase {
             op_name: "Gemm",
             seed: 0xF00A,

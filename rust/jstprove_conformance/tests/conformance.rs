@@ -35,6 +35,9 @@ fn run_group(group_name: &str, cases: Vec<TestCase>) {
     let full_runner = ConformanceRunner {
         reference_only: false,
     };
+    let ref_runner = ConformanceRunner {
+        reference_only: true,
+    };
 
     let mut full_failures = 0usize;
     let mut jstprove_errors_skipped = 0usize;
@@ -68,12 +71,41 @@ fn run_group(group_name: &str, cases: Vec<TestCase>) {
             }
             TestResult::Error(e) => {
                 if case.allow_jstprove_error {
-                    jstprove_errors_skipped += 1;
-                    log::info!(
-                        "[{group_name}] SKIP (allow_jstprove_error) op={} seed={}: {e}",
-                        case.op_name,
-                        case.seed
-                    );
+                    // Verify the reference (tract) path is still correct even though JSTProve
+                    // errored.  Only count as skipped if reference passes; otherwise the ONNX
+                    // model or tract path is broken, which is a real failure.
+                    match ref_runner.run(case) {
+                        TestResult::Pass => {
+                            jstprove_errors_skipped += 1;
+                            log::info!(
+                                "[{group_name}] SKIP (allow_jstprove_error) op={} seed={}: {e}",
+                                case.op_name,
+                                case.seed
+                            );
+                        }
+                        TestResult::Fail(ref_failures) => {
+                            full_failures += ref_failures.len();
+                            eprintln!(
+                                "[{group_name}] FAIL (reference path) op={} seed={}: JSTProve errored ({e}) AND reference path has {} mismatch(es)",
+                                case.op_name, case.seed, ref_failures.len()
+                            );
+                            for f in &ref_failures {
+                                eprintln!("  {f}");
+                            }
+                            if fail_fast {
+                                panic!(
+                                    "[{group_name}] FAIL op={} seed={} — stopping early (set CONFORMANCE_FAIL_FAST=0 to see all failures)",
+                                    case.op_name, case.seed
+                                );
+                            }
+                        }
+                        TestResult::Error(ref_err) => {
+                            panic!(
+                                "[{group_name}] ERROR op={} seed={}: JSTProve errored ({e:#}) AND reference path errored: {ref_err:#}",
+                                case.op_name, case.seed
+                            );
+                        }
+                    }
                 } else {
                     panic!(
                         "[{group_name}] ERROR op={} seed={}: {e:#}",
