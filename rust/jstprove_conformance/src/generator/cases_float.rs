@@ -781,7 +781,7 @@ pub fn pooling_cases() -> Vec<TestCase> {
             inputs: vec![x_vals],
             tolerance: tol(3),
             ignore_extra_reference_outputs: false,
-            allow_jstprove_error: true, // XXX: query_id overflow bug in AveragePool circuit
+            allow_jstprove_error: true, // TODO(JSTPRV-166): query_id underflow in AveragePool LogUp table
         });
     }
 
@@ -804,7 +804,7 @@ pub fn pooling_cases() -> Vec<TestCase> {
             inputs: vec![x_vals],
             tolerance: tol(3),
             ignore_extra_reference_outputs: false,
-            allow_jstprove_error: true, // XXX: query_id overflow bug in AveragePool circuit
+            allow_jstprove_error: true, // TODO(JSTPRV-166): query_id underflow in AveragePool LogUp table
         });
     }
 

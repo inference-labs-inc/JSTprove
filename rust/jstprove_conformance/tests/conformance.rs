@@ -25,6 +25,8 @@ use jstprove_conformance::{
 // ---------------------------------------------------------------------------
 
 fn run_group(group_name: &str, cases: Vec<TestCase>) {
+    debug_assert!(!cases.is_empty(), "run_group(\"{group_name}\"): no cases — mark the test #[ignore] instead of passing an empty Vec");
+
     // Fail-fast unless explicitly disabled.
     let fail_fast = std::env::var("CONFORMANCE_FAIL_FAST")
         .map(|v| v != "0")
@@ -224,8 +226,11 @@ fn pooling_ops() {
     run_group("pooling", pooling_cases());
 }
 
-/// Group H — Normalization ops (InstanceNorm, GroupNorm — reference_only placeholders).
+/// Group H — Normalization ops (InstanceNorm, GroupNorm).
+/// Ignored: norm_cases() returns an empty Vec because neither InstanceNorm nor GroupNorm
+/// is supported by both tract and JSTProve.  Remove #[ignore] when cases are added.
 #[test]
+#[ignore]
 fn norm_ops() {
     let _ = env_logger::try_init();
     run_group("norm", norm_cases());

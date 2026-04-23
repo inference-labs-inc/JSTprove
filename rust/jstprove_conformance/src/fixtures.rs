@@ -344,12 +344,13 @@ fn f06_cos_large_angle() -> RegressionFixture {
 // ---------------------------------------------------------------------------
 
 fn f07a_reducemax_overflow_boundary() -> RegressionFixture {
-    // NOTE: Exact input from original failure not recovered from git history.
-    // Uses i64::MAX/4 which is the boundary described in the task spec.
-    // The failure: range check added a shift_offset to value, and
-    // value + shift_offset overflowed the signed i64 representation.
-    // keepdims=0 to match the m3 reduction_cases ReduceMax structure that works with tract.
-    // tract 0.21 has a `q_sum_t` overflow bug when keepdims=1 on INT64 tensors.
+    // The original failure: range check added a shift_offset to the value, and
+    // value + shift_offset overflowed the signed i64 representation.  The exact
+    // input from the failure was not recovered from git history; this fixture
+    // verifies the fix holds for a representative small input.
+    // keepdims=0 to avoid tract 0.21's q_sum_t overflow bug on INT64 tensors with keepdims=1.
+    // Note: INT64 witness inputs are capped at 2^53 by witness_f64, so large boundary
+    // values (e.g. i64::MAX/4) cannot be used here.
     let onnx_bytes = build_single_op_model(
         "ReduceMax",
         &[("data", &[6], INT64)],
@@ -372,9 +373,10 @@ fn f07a_reducemax_overflow_boundary() -> RegressionFixture {
     RegressionFixture {
         id: "reducemax_overflow_boundary",
         fixed_in: "historical fix (pre-main)",
-        failure_description: "ReduceMax with large positive values produced overflow when \
-                              the LogUp range check added a shift_offset to the value before \
-                              the range check, causing the shifted value to overflow i64.",
+        failure_description: "ReduceMax produced overflow when the LogUp range check added a \
+                              shift_offset to the value before the check, causing the shifted \
+                              value to overflow i64.  Exact reproducer not recovered; fixture \
+                              verifies the corrected path with keepdims=0.",
         case: TestCase {
             op_name: "ReduceMax",
             seed: 0xF007,
