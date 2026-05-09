@@ -2307,6 +2307,35 @@ dependencies = [
 ]
 
 [[package]]
+name = "jst_gkr"
+version = "0.4.0"
+dependencies = [
+ "arith",
+ "ark-std 0.4.0",
+ "circuit",
+ "config_macros",
+ "criterion",
+ "env_logger 0.11.9",
+ "gkr",
+ "gkr_engine",
+ "gkr_hashers",
+ "goldilocks",
+ "jst_gkr_engine",
+ "poly_commit",
+ "rand 0.8.5",
+ "rand_chacha",
+ "sha2",
+ "transcript",
+]
+
+[[package]]
+name = "jst_gkr_engine"
+version = "0.4.0"
+dependencies = [
+ "arith",
+]
+
+[[package]]
 name = "jstprove-io"
 version = "0.1.0"
 dependencies = [
