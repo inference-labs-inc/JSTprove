@@ -19,7 +19,6 @@ on:
 permissions:
   contents: read
   issues: write
-  checks: write
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -32,6 +31,7 @@ jobs:
     timeout-minutes: 15
     strategy:
       fail-fast: false
+      max-parallel: 1
       matrix:
         dir: [".", "rust/jstprove_pyo3", "rust/jstprove_zkvm"]
     steps:
@@ -40,7 +40,14 @@ jobs:
       - name: Install cargo-audit
         run: cargo +stable install cargo-audit --vers 0.22.0 --no-default-features
 
-      - uses: rustsec/audit-check@69366f33c96575abad1ee0dba8212993eecbe998 # v2.0.0
+      - name: Run cargo audit
+        if: github.event_name != 'schedule'
+        working-directory: ${{ matrix.dir }}
+        run: cargo audit
+
+      - name: Open issues for new advisories
+        if: github.event_name == 'schedule'
+        uses: rustsec/audit-check@69366f33c96575abad1ee0dba8212993eecbe998 # v2.0.0
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           working-directory: ${{ matrix.dir }}
