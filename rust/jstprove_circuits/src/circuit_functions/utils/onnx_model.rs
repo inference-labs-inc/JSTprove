@@ -771,24 +771,6 @@ mod tests {
     }
 
     #[test]
-    fn backend_remainder_round_trip() {
-        let json = r#"{
-            "scale_base": 2,
-            "scale_exponent": 18,
-            "rescale_config": {},
-            "inputs": [],
-            "outputs": [],
-            "backend": "remainder"
-        }"#;
-        let params: CircuitParams = serde_json::from_str(json).unwrap();
-        assert_eq!(params.proof_system, ProofSystem::Remainder);
-        assert!(params.proof_system.is_remainder());
-        let bytes = rmp_serde::to_vec_named(&params).unwrap();
-        let round_tripped: CircuitParams = rmp_serde::from_slice(&bytes).unwrap();
-        assert_eq!(round_tripped.proof_system, ProofSystem::Remainder);
-    }
-
-    #[test]
     fn backend_expander_explicit() {
         let json = r#"{
             "scale_base": 2,
@@ -800,7 +782,6 @@ mod tests {
         }"#;
         let params: CircuitParams = serde_json::from_str(json).unwrap();
         assert_eq!(params.proof_system, ProofSystem::Expander);
-        assert!(!params.proof_system.is_remainder());
     }
 
     #[test]

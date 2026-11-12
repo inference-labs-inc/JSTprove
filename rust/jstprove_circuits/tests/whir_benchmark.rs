@@ -11,10 +11,7 @@ use jstprove_circuits::runner::main_runner::read_circuit_msgpack;
 use jstprove_onnx::quantizer::N_BITS_GOLDILOCKS;
 
 fn lenet_model_path() -> std::path::PathBuf {
-    std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .unwrap()
-        .join("jstprove_remainder/models/lenet.onnx")
+    std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("models/lenet.onnx")
 }
 
 fn setup_onnx_context_goldilocks()

@@ -612,14 +612,6 @@ mod tests {
     }
 
     #[test]
-    fn remainder_ops_subset() {
-        let expander = supported_ops(ProofSystem::Expander);
-        for &op in supported_ops(ProofSystem::Remainder) {
-            assert!(expander.contains(&op), "{op} missing from Expander");
-        }
-    }
-
-    #[test]
     fn hardcoded_ops_exist_in_supported() {
         use crate::circuit_functions::layers::LayerKind;
 

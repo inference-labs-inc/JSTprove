@@ -29,9 +29,8 @@ members = [
     "rust/jstprove_circuits",
     "rust/jstprove_io",
     "rust/jstprove_onnx",
-    "rust/jstprove_remainder",
 ]
-exclude = ["rust/jstprove_pyo3", "rust/jstprove_zkvm", ".claude"]
+exclude = ["rust/jstprove_pyo3", ".claude"]
 
 [workspace.package]
 version = "0.4.0"

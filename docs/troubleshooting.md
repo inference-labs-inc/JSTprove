@@ -6,7 +6,7 @@ Common issues and quick fixes.
 
 ## Runner not found
 
-- Run commands from the **repo root** so `./target/release/jstprove` and `./target/release/jstprove-remainder` are visible.
+- Run commands from the **repo root** so `./target/release/jstprove` is visible.
 - Ensure you have run `cargo build --release`.
 
 ---

@@ -1,3 +1,3 @@
-from jstprove._native import Circuit, WitnessResult, BatchResult
+from jstprove._native import holographic_setup_vk
 
-__all__ = ["Circuit", "WitnessResult", "BatchResult"]
+__all__ = ["holographic_setup_vk"]

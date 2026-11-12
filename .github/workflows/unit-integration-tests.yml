@@ -50,7 +50,6 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target
-            rust/jstprove_remainder/target
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
             ${{ runner.os }}-cargo-
@@ -62,6 +61,3 @@ jobs:
           -p jstprove-io
           -p jstprove-onnx
           --lib --tests --bins
-
-      - name: Run remainder unit tests
-        run: cargo test --manifest-path rust/jstprove_remainder/Cargo.toml --lib

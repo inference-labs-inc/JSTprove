@@ -56,7 +56,6 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target
-            rust/jstprove_remainder/target
             rust/jstprove_pyo3/target
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
@@ -67,9 +66,6 @@ jobs:
 
       - name: Run cargo clippy (workspace)
         run: cargo clippy --workspace --all-targets --all-features --exclude metal_accel -- -D warnings
-
-      - name: Run cargo clippy (jstprove-remainder)
-        run: cargo clippy --manifest-path rust/jstprove_remainder/Cargo.toml --all-targets --all-features
 
       - name: Run cargo clippy (jstprove-pyo3)
         run: cargo clippy --manifest-path rust/jstprove_pyo3/Cargo.toml --all-targets --all-features -- -D warnings
@@ -102,17 +98,13 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target
-            rust/jstprove_remainder/target
             rust/jstprove_pyo3/target
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
             ${{ runner.os }}-cargo-
 
-      - name: Run Rust e2e tests (Remainder)
-        run: cargo test --release --manifest-path rust/jstprove_remainder/Cargo.toml
-
-      - name: Run Rust e2e tests (Expander + Remainder)
-        run: cargo test --release -p jstprove_circuits --features remainder
+      - name: Run Rust e2e tests (Expander)
+        run: cargo test --release -p jstprove_circuits
 
       - name: Install uv
         uses: astral-sh/setup-uv@5a095e7a2014a4212f075830d4f7277575a9d098 # v7.3.1
@@ -132,7 +124,7 @@ jobs:
           uv run maturin develop --release
 
       - name: Verify PyO3 bindings
-        run: uv run python -c "from jstprove import Circuit; print('PyO3 bindings OK')"
+        run: uv run python -c "from jstprove import holographic_setup_vk; print('PyO3 bindings OK')"
 
       - name: Run Python binding tests
         run: uv run pytest tests/ -v

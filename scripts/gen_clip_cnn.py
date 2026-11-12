@@ -66,7 +66,7 @@ def main():
         os.path.dirname(__file__),
         "..",
         "rust",
-        "jstprove_remainder",
+        "jstprove_circuits",
         "models",
         "clip_cnn.onnx",
     )

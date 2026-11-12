@@ -31,7 +31,6 @@ num-bigint = "0.4"
 num-traits = "0.2"
 jstprove-io = { path = "../jstprove_io" }
 jstprove-onnx = { path = "../jstprove_onnx" }
-jstprove-remainder = { path = "../jstprove_remainder", optional = true }
 arith.workspace = true
 circuit.workspace = true
 goldilocks.workspace = true
@@ -50,7 +49,6 @@ rayon.workspace = true
 
 [features]
 peak-mem = ["peakmem-alloc"]
-remainder = ["dep:jstprove-remainder"]
 metal = ["expander_compiler/metal"]
 
 [dev-dependencies]
