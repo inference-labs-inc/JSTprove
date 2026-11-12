@@ -1,11 +1,9 @@
-use derivative::Derivative;
 use halo2curves::pairing::Engine;
 use serdes::ExpSerde;
 
 use crate::*;
 
-#[derive(Debug, Clone, Derivative, ExpSerde)]
-#[derivative(Default(bound = ""))]
+#[derive(Debug, Clone, ExpSerde)]
 pub struct HyperBiKZGOpening<E: Engine>
 where
     E::Fr: ExpSerde,
@@ -51,6 +49,24 @@ where
             quotient_delta_x_commitment: value.quotient_delta_x_commitment,
 
             ..Default::default()
+        }
+    }
+}
+
+impl<E: Engine> Default for HyperBiKZGOpening<E>
+where
+    E::Fr: ExpSerde,
+    E::G1Affine: Default + ExpSerde,
+{
+    fn default() -> Self {
+        Self {
+            folded_oracle_commitments: Vec::new(),
+            aggregated_evals: HyperKZGAggregatedEvals::default(),
+            leader_evals: HyperKZGExportedLocalEvals::default(),
+            beta_x_commitment: E::G1Affine::default(),
+            beta_y_commitment: E::G1Affine::default(),
+            quotient_delta_x_commitment: E::G1Affine::default(),
+            quotient_delta_y_commitment: E::G1Affine::default(),
         }
     }
 }

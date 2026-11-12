@@ -15,7 +15,7 @@ use jstprove_circuits::runner::main_runner::read_circuit_msgpack;
 use jstprove_onnx::quantizer::N_BITS_GOLDILOCKS;
 
 fn lenet_model_path() -> std::path::PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("../jstprove_remainder/models/lenet.onnx")
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("models/lenet.onnx")
 }
 
 fn setup_onnx_context() -> jstprove_circuits::circuit_functions::utils::onnx_model::CircuitParams {

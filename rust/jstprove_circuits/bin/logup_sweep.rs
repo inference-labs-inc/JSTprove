@@ -72,7 +72,7 @@ fn main() {
         vec!["lenet".to_string(), "mini_resnet".to_string()]
     };
 
-    let models_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../jstprove_remainder/models");
+    let models_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("models");
 
     for model_name in &models {
         let model_path = models_dir.join(format!("{model_name}.onnx"));

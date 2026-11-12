@@ -24,7 +24,7 @@ fn main() {
         .unwrap();
     let model_file = format!("{model_name}.onnx");
     let model_path = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../jstprove_remainder/models")
+        .join("models")
         .join(&model_file);
     assert!(
         model_path.exists(),

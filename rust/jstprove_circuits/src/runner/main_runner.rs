@@ -2093,15 +2093,6 @@ pub fn get_proof_config(
     }
 }
 
-fn is_remainder_backend(matches: &clap::ArgMatches, metadata: Option<&CircuitParams>) -> bool {
-    if matches.value_source("backend") == Some(clap::parser::ValueSource::CommandLine) {
-        return matches
-            .get_one::<String>("backend")
-            .is_some_and(|b| b == "remainder");
-    }
-    metadata.is_some_and(|m| m.proof_system.is_remainder())
-}
-
 /// Handles CLI arguments and dispatches to the appropriate runner command.
 ///
 /// # Errors
@@ -2132,12 +2123,6 @@ where
 {
     let command = get_arg(matches, "type")?;
     let compress = !matches.get_flag("no_compress");
-    let use_remainder = is_remainder_backend(matches, metadata.as_ref());
-
-    if use_remainder {
-        return super::remainder_dispatch::dispatch(matches, &command, compress);
-    }
-
     let is_interactive = !command.starts_with("run_pipe_")
         && !command.ends_with("_stdin")
         && !command.starts_with("run_batch_");
@@ -2522,14 +2507,6 @@ pub fn get_args() -> clap::ArgMatches {
                 .action(clap::ArgAction::SetTrue),
         )
         .arg(
-            Arg::new("backend")
-                .help("Proving backend: 'expander' (default) or 'remainder'")
-                .required(false)
-                .long("backend")
-                .value_parser(["expander", "remainder"])
-                .default_value("expander"),
-        )
-        .arg(
             Arg::new("curve")
                 .help("Proof configuration: 'bn254' (default), 'goldilocks', 'goldilocks_basefold', 'goldilocks_whir', or 'goldilocks_whir_pq'. Specifies the field, extension degree, and PCS — not an elliptic curve despite the legacy flag name.")
                 .required(false)
@@ -2537,12 +2514,6 @@ pub fn get_args() -> clap::ArgMatches {
                 .visible_alias("curve")
                 .value_parser(["bn254", "goldilocks", "goldilocks_basefold", "goldilocks_whir", "goldilocks_whir_pq"])
                 .default_value("bn254"),
-        )
-        .arg(
-            Arg::new("model")
-                .help("Path to quantized ONNX model (Remainder backend)")
-                .required(false)
-                .long("model"),
         )
         .arg(
             Arg::new("onnx")

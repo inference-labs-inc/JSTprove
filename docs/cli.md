@@ -1,6 +1,6 @@
 # CLI Reference
 
-JSTprove provides two CLI binaries: **`jstprove`** (Expander backend) and **`jstprove-remainder`** (Remainder backend).
+JSTprove provides one CLI binary: **`jstprove`** (Expander backend).
 
 ---
 
@@ -29,9 +29,7 @@ jstprove <command> [options]
 | `--manifest` | `-f` | Path to batch manifest (msgpack) |
 | `--name` | `-n` | Circuit name for file naming |
 | `--no-compress` | | Disable zstd compression for output files |
-| `--backend` | | Proving backend: `expander` (default) or `remainder` |
-| `--model` | | Path to quantized ONNX model (Remainder backend) |
-| `--onnx` | | Path to ONNX model (generates metadata automatically; requires the Cargo feature `remainder`, e.g. `cargo build --features remainder`) |
+| `--onnx` | | Path to ONNX model (generates metadata automatically) |
 | `--curve` | | Elliptic curve: `bn254` (default), `goldilocks`, or `goldilocks_basefold` |
 | `--quiet` | | Suppress all output |
 | `--json` | | Emit JSON lines to stderr |
@@ -89,7 +87,7 @@ jstprove <command> [options]
 
 ```bash
 jstprove msgpack_compile \
-  --onnx rust/jstprove_remainder/models/lenet.onnx \
+  --onnx rust/jstprove_circuits/models/lenet.onnx \
   -c artifacts/lenet/circuit.msgpack
 
 jstprove run_gen_witness \
@@ -109,107 +107,6 @@ jstprove run_gen_verify \
   -o artifacts/lenet/output.json \
   -w artifacts/lenet/witness.msgpack \
   -p artifacts/lenet/proof.msgpack
-```
-
----
-
-## `jstprove-remainder` (Remainder backend)
-
-Built from `rust/jstprove_remainder/src/main.rs`. Uses clap-derive subcommands.
-
-### Synopsis
-
-```bash
-jstprove-remainder <subcommand> [options]
-```
-
-### Subcommands
-
-**compile** -- Compile an ONNX model into a `QuantizedModel` (msgpack).
-
-| Flag | Short | Description |
-|------|-------|-------------|
-| `--model` | `-m` | Path to input ONNX model |
-| `--output` | `-o` | Path to output compiled model |
-| `--no-compress` | | Disable zstd compression |
-
-**witness** -- Generate witness data from a compiled model and input.
-
-| Flag | Short | Description |
-|------|-------|-------------|
-| `--model` | | Path to compiled model |
-| `--input` | `-i` | Path to input data |
-| `--output` | `-o` | Path to output witness |
-| `--no-compress` | | Disable zstd compression |
-
-**prove** -- Generate proof from model and witness.
-
-| Flag | Short | Description |
-|------|-------|-------------|
-| `--model` | | Path to compiled model |
-| `--witness` | `-w` | Path to witness file |
-| `--output` | `-o` | Path to output proof |
-| `--no-compress` | | Disable zstd compression |
-
-**verify** -- Verify a proof.
-
-| Flag | Short | Description |
-|------|-------|-------------|
-| `--model` | | Path to compiled model |
-| `--proof` | | Path to proof file |
-| `--input` | `-i` | Path to input data |
-
-**batch-witness** -- Batch witness generation from a manifest.
-
-| Flag | Short | Description |
-|------|-------|-------------|
-| `--model` | | Path to compiled model |
-| `--manifest` | `-m` | Path to batch manifest |
-| `--no-compress` | | Disable zstd compression |
-
-**batch-prove** -- Batch proving from a manifest.
-
-| Flag | Short | Description |
-|------|-------|-------------|
-| `--model` | | Path to compiled model |
-| `--manifest` | `-m` | Path to batch manifest |
-| `--no-compress` | | Disable zstd compression |
-
-**batch-verify** -- Batch verification from a manifest.
-
-| Flag | Short | Description |
-|------|-------|-------------|
-| `--model` | | Path to compiled model |
-| `--manifest` | `-m` | Path to batch manifest |
-
-**pipe-witness**, **pipe-prove**, **pipe-verify** -- Streaming operations via stdin/stdout.
-
-| Flag | Short | Description |
-|------|-------|-------------|
-| `--model` | | Path to compiled model |
-| `--no-compress` | | Disable zstd compression (witness/prove only) |
-
-### Example
-
-```bash
-jstprove-remainder compile \
-  -m rust/jstprove_remainder/models/lenet.onnx \
-  -o artifacts/lenet/model.msgpack
-
-jstprove-remainder witness \
-  --model artifacts/lenet/model.msgpack \
-  -i artifacts/lenet/input.json \
-  -o artifacts/lenet/witness.msgpack
-
-jstprove-remainder prove \
-  --model artifacts/lenet/model.msgpack \
-  -w artifacts/lenet/witness.msgpack \
-  -o artifacts/lenet/proof.msgpack
-
-jstprove-remainder verify \
-  --model artifacts/lenet/model.msgpack \
-  --proof artifacts/lenet/proof.msgpack \
-  -i artifacts/lenet/input.json
 ```
 
 ---

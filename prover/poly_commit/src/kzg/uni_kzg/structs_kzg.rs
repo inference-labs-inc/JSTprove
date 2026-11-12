@@ -1,10 +1,8 @@
-use derivative::Derivative;
 use gkr_engine::StructuredReferenceString;
 use halo2curves::{pairing::Engine, CurveAffine};
 use serdes::{ExpSerde, SerdeResult};
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Derivative)]
-#[derivative(Default(bound = ""))]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct UniKZGCommitment<E: Engine>(pub E::G1Affine)
 where
     E::G1Affine: CurveAffine<ScalarExt = E::Fr, CurveExt = E::G1>;
@@ -34,8 +32,7 @@ where
 
 /// Structured reference string for univariate KZG polynomial commitment scheme.
 /// The univariate polynomial here is of coefficient form.
-#[derive(Clone, Debug, PartialEq, Eq, Derivative, ExpSerde)]
-#[derivative(Default(bound = ""))]
+#[derive(Clone, Debug, PartialEq, Eq, ExpSerde)]
 pub struct CoefFormUniKZGSRS<E: Engine>
 where
     E::G1Affine: ExpSerde,
@@ -80,6 +77,28 @@ where
     fn from(value: &CoefFormUniKZGSRS<E>) -> Self {
         Self {
             tau_g2: value.tau_g2,
+        }
+    }
+}
+
+impl<E: Engine> Default for UniKZGCommitment<E>
+where
+    E::G1Affine: CurveAffine<ScalarExt = E::Fr, CurveExt = E::G1>,
+{
+    fn default() -> Self {
+        Self(E::G1Affine::default())
+    }
+}
+
+impl<E: Engine> Default for CoefFormUniKZGSRS<E>
+where
+    E::G1Affine: ExpSerde,
+    E::G2Affine: CurveAffine<ScalarExt = E::Fr, CurveExt = E::G2> + ExpSerde,
+{
+    fn default() -> Self {
+        Self {
+            powers_of_tau: Vec::new(),
+            tau_g2: E::G2Affine::default(),
         }
     }
 }

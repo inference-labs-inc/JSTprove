@@ -1,12 +1,10 @@
-use derivative::Derivative;
 use gkr_engine::StructuredReferenceString;
 use halo2curves::{pairing::Engine, CurveAffine};
 use serdes::{ExpSerde, SerdeResult};
 
 use crate::{CoefFormUniKZGSRS, UniKZGVerifierParams};
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Derivative)]
-#[derivative(Default(bound = ""))]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct BiKZGCommitment<E: Engine>(pub E::G1Affine)
 where
     E::G1Affine: CurveAffine<ScalarExt = E::Fr, CurveExt = E::G1>;
@@ -25,8 +23,7 @@ where
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Derivative, ExpSerde)]
-#[derivative(Default(bound = ""))]
+#[derive(Clone, Debug, PartialEq, Eq, ExpSerde)]
 pub struct CoefFormBiKZGLocalSRS<E: Engine>
 where
     E::G1Affine: ExpSerde,
@@ -93,4 +90,26 @@ where
 pub struct BiKZGProof<E: Engine> {
     pub quotient_x: E::G1Affine,
     pub quotient_y: E::G1Affine,
+}
+
+impl<E: Engine> Default for BiKZGCommitment<E>
+where
+    E::G1Affine: CurveAffine<ScalarExt = E::Fr, CurveExt = E::G1>,
+{
+    fn default() -> Self {
+        Self(E::G1Affine::default())
+    }
+}
+
+impl<E: Engine> Default for CoefFormBiKZGLocalSRS<E>
+where
+    E::G1Affine: ExpSerde,
+    E::G2Affine: CurveAffine<ScalarExt = E::Fr, CurveExt = E::G2> + ExpSerde,
+{
+    fn default() -> Self {
+        Self {
+            tau_x_srs: CoefFormUniKZGSRS::default(),
+            tau_y_srs: CoefFormUniKZGSRS::default(),
+        }
+    }
 }

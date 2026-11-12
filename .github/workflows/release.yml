@@ -69,7 +69,6 @@ jobs:
             ~/.cargo/git
             target
             rust/jstprove_pyo3/target
-            rust/jstprove_remainder/target
           key: manylinux-2-28-cargo-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
             manylinux-2-28-cargo-
@@ -80,7 +79,7 @@ jobs:
       - name: Test wheel installation
         run: |
           uv pip install --system rust/jstprove_pyo3/target/wheels/*.whl
-          python3 -c "from jstprove import Circuit; print('PyO3 bindings OK')"
+          python3 -c "from jstprove import holographic_setup_vk; print('PyO3 bindings OK')"
 
       - name: Upload wheel artifact
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
@@ -146,7 +145,6 @@ jobs:
             ~/.cargo/git
             target
             rust/jstprove_pyo3/target
-            rust/jstprove_remainder/target
           key: macos-cargo-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
             macos-cargo-
@@ -159,7 +157,7 @@ jobs:
       - name: Test wheel installation
         run: |
           uv pip install --system rust/jstprove_pyo3/target/wheels/*.whl
-          python3 -c "from jstprove import Circuit; print('PyO3 bindings OK')"
+          python3 -c "from jstprove import holographic_setup_vk; print('PyO3 bindings OK')"
 
       - name: Upload wheel artifact
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6

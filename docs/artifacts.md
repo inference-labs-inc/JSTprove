@@ -47,14 +47,6 @@ The payload is msgpack data, optionally zstd-compressed (controlled by the `--no
 
 ---
 
-## Remainder backend artifacts
-
-**`QuantizedModel`** (msgpack) -- produced by `jstprove-remainder compile`. Contains the quantized ONNX graph and scale configuration.
-
-Witness and proof artifacts for the remainder backend also use msgpack serialization with the same envelope format.
-
----
-
 ## Tips
 
 - Keep artifacts from the **same compile** together (compiled circuit + witness + proof) to avoid version mismatches.

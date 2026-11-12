@@ -1,6 +1,5 @@
 use jstprove_circuits::circuit_functions::utils::onnx_model::{Architecture, CircuitParams, WANDB};
 
-use jstprove_circuits::ProofSystem;
 use jstprove_circuits::cli::OutputMode;
 use jstprove_circuits::expander_metadata;
 use jstprove_circuits::io::io_reader::FileReader;
@@ -179,14 +178,6 @@ fn main() {
         }
         return;
     }
-    let cli_backend_explicit =
-        matches.value_source("backend") == Some(clap::parser::ValueSource::CommandLine);
-    let cli_is_remainder = cli_backend_explicit
-        && matches
-            .get_one::<String>("backend")
-            .is_some_and(|b| b == "remainder");
-    let mut is_remainder = cli_is_remainder;
-
     let needs_meta = ONNX_META_COMMANDS.contains(&cmd_type.as_str())
         || ONNX_FULL_COMMANDS.contains(&cmd_type.as_str());
     let needs_full = ONNX_FULL_COMMANDS.contains(&cmd_type.as_str());
@@ -195,27 +186,12 @@ fn main() {
     let has_arch = matches.get_one::<String>("arch").is_some();
     let has_onnx = matches.get_one::<String>("onnx").is_some();
 
-    if !is_remainder && !cli_backend_explicit {
-        if let Some(circuit_path) = matches.get_one::<String>("circuit_path") {
-            if let Some(params) = try_load_metadata_from_circuit(circuit_path) {
-                if params.proof_system.is_remainder() {
-                    is_remainder = true;
-                }
-            }
-        }
-    }
-
-    if has_onnx && is_remainder {
-        eprintln!("Error: --onnx cannot be used with the remainder backend.");
-        std::process::exit(1);
-    }
-
     if has_onnx && (has_meta || has_arch) {
         eprintln!("Error: --onnx cannot be combined with --meta or --arch.");
         std::process::exit(1);
     }
 
-    if has_onnx && !is_remainder {
+    if has_onnx {
         let onnx_path_str = get_arg(&matches, "onnx").unwrap();
         let onnx_path = std::path::Path::new(&onnx_path_str);
         let early_config = match get_proof_config(&matches, None) {
@@ -258,39 +234,19 @@ fn main() {
         }
     }
 
-    if !is_remainder && needs_full && !has_onnx && (!has_meta || !has_arch) {
+    if needs_full && !has_onnx && (!has_meta || !has_arch) {
         eprintln!("Error: command '{cmd_type}' requires --onnx or --meta and --arch arguments.");
         std::process::exit(1);
     }
 
-    if !is_remainder && !has_onnx {
+    if !has_onnx {
         if has_meta {
             set_onnx_context(&matches, needs_full);
-            if let Ok(params) = OnnxContext::get_params() {
-                if params.proof_system.is_remainder() {
-                    if cli_backend_explicit {
-                        eprintln!(
-                            "Error: command '{cmd_type}' --backend conflicts with metadata (backend: remainder)."
-                        );
-                        std::process::exit(1);
-                    }
-                    is_remainder = true;
-                }
-            }
         } else if needs_meta {
             let circuit_path = matches
                 .get_one::<String>("circuit_path")
                 .expect("command requires --meta or -c with bundled metadata");
             if let Some(params) = try_load_metadata_from_circuit(circuit_path) {
-                if params.proof_system.is_remainder() {
-                    if cli_backend_explicit {
-                        eprintln!(
-                            "Error: command '{cmd_type}' --backend conflicts with metadata (backend: remainder)."
-                        );
-                        std::process::exit(1);
-                    }
-                    is_remainder = true;
-                }
                 let wandb = match load_wandb(&matches) {
                     Ok(w) => w,
                     Err(e) => {
@@ -317,27 +273,7 @@ fn main() {
         }
     }
 
-    let mut metadata = if is_remainder {
-        // Remainder mode dispatches via meta.proof_system and never
-        // consults proof_config; leave it unset so we don't fabricate
-        // a stamp that downstream validation would treat as real.
-        Some(CircuitParams {
-            scale_base: 2,
-            scale_exponent: 18,
-            rescale_config: std::collections::HashMap::new(),
-            inputs: vec![],
-            outputs: vec![],
-            freivalds_reps: 1,
-            n_bits_config: std::collections::HashMap::new(),
-            weights_as_inputs: false,
-            proof_system: ProofSystem::Remainder,
-            proof_config: None,
-            logup_chunk_bits: None,
-            public_inputs: Vec::new(),
-        })
-    } else {
-        OnnxContext::get_params().ok()
-    };
+    let mut metadata = OnnxContext::get_params().ok();
 
     // Reject unstamped manifests up-front, before any resolution or
     // mutation. A loaded manifest with no proof_config is a
@@ -345,63 +281,50 @@ fn main() {
     // --curve cannot reliably override the unknown original config
     // because picking the wrong one would silently produce or verify
     // proofs against the wrong prover. The bundle must be recompiled
-    // with a stamping prover. Remainder mode is exempt because it
-    // dispatches via meta.proof_system and never consults
-    // proof_config.
-    if !is_remainder {
-        if let Some(ref meta) = metadata {
-            if meta.proof_config.is_none() {
-                eprintln!(
-                    "Error: circuit manifest has no stamped proof_config; this bundle was compiled with an unstamped prover and must be recompiled. --curve cannot override an unstamped manifest because the original config is unknown."
-                );
-                std::process::exit(1);
-            }
+    // with a stamping prover.
+    if let Some(ref meta) = metadata {
+        if meta.proof_config.is_none() {
+            eprintln!(
+                "Error: circuit manifest has no stamped proof_config; this bundle was compiled with an unstamped prover and must be recompiled. --curve cannot override an unstamped manifest because the original config is unknown."
+            );
+            std::process::exit(1);
         }
     }
 
-    // Remainder bypasses the ProofConfig dispatch entirely; pick a
-    // placeholder so the match below has something to drive the
-    // (unused) handle_args type parameter.
-    let proof_config = if is_remainder {
-        ProofConfig::default()
-    } else {
-        match get_proof_config(&matches, metadata.as_ref()) {
-            Ok(config) => config,
-            Err(msg) => {
-                eprintln!("Error: {msg}");
-                std::process::exit(1);
-            }
+    let proof_config = match get_proof_config(&matches, metadata.as_ref()) {
+        Ok(config) => config,
+        Err(msg) => {
+            eprintln!("Error: {msg}");
+            std::process::exit(1);
         }
     };
 
-    if !is_remainder {
-        if let Some(ref meta) = metadata {
-            let cli_explicit =
-                matches.value_source("curve") == Some(clap::parser::ValueSource::CommandLine);
-            // The unstamped check above guarantees proof_config is
-            // Some here when metadata is Some.
-            let stamped = meta
-                .proof_config
-                .expect("unstamped manifests are rejected before this point");
-            if let Err(e) = stamped.ensure_current() {
-                eprintln!("Error: {e}");
-                std::process::exit(1);
-            }
-            if cli_explicit && stamped.config != proof_config {
-                eprintln!(
-                    "Error: proof config mismatch — circuit was compiled with '{}' but '{proof_config}' was requested",
-                    stamped.config,
-                );
-                std::process::exit(1);
-            }
+    if let Some(ref meta) = metadata {
+        let cli_explicit =
+            matches.value_source("curve") == Some(clap::parser::ValueSource::CommandLine);
+        // The unstamped check above guarantees proof_config is
+        // Some here when metadata is Some.
+        let stamped = meta
+            .proof_config
+            .expect("unstamped manifests are rejected before this point");
+        if let Err(e) = stamped.ensure_current() {
+            eprintln!("Error: {e}");
+            std::process::exit(1);
         }
+        if cli_explicit && stamped.config != proof_config {
+            eprintln!(
+                "Error: proof config mismatch — circuit was compiled with '{}' but '{proof_config}' was requested",
+                stamped.config,
+            );
+            std::process::exit(1);
+        }
+    }
 
-        if let Some(ref mut meta) = metadata {
-            // The unstamped check above exits before we get here, so
-            // this assignment refreshes the version stamp without
-            // changing the resolved config.
-            meta.proof_config = Some(StampedProofConfig::current(proof_config));
-        }
+    if let Some(ref mut meta) = metadata {
+        // The unstamped check above exits before we get here, so
+        // this assignment refreshes the version stamp without
+        // changing the resolved config.
+        meta.proof_config = Some(StampedProofConfig::current(proof_config));
     }
 
     let mode = if matches.get_flag("json") {

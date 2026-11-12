@@ -1,7 +1,7 @@
 use ark_bls12_381::{
     Fr, G1Affine as BlsG1Affine, G1Projective, G2Affine as BlsG2Affine, G2Projective,
 };
-use ark_ec::Group;
+use ark_ec::AdditiveGroup;
 use ark_ff::UniformRand;
 use ark_serialize::CanonicalSerialize;
 use circuit_std_rs::{

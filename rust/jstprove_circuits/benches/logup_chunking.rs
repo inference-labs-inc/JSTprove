@@ -27,7 +27,7 @@ fn bench_compile_chunk_bits(c: &mut Criterion) {
     let model_name = std::env::var("MODEL").unwrap_or_else(|_| "lenet".to_string());
     let model_file = format!("{model_name}.onnx");
     let model_path = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../jstprove_remainder/models")
+        .join("models")
         .join(&model_file);
     if !model_path.exists() {
         return;

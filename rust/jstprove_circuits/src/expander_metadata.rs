@@ -590,8 +590,7 @@ mod tests {
 
     #[test]
     fn lenet_metadata_generation() {
-        let model_path =
-            Path::new(env!("CARGO_MANIFEST_DIR")).join("../jstprove_remainder/models/lenet.onnx");
+        let model_path = Path::new(env!("CARGO_MANIFEST_DIR")).join("models/lenet.onnx");
         assert!(
             model_path.exists(),
             "missing test fixture: {}",
@@ -626,8 +625,7 @@ mod tests {
 
     #[test]
     fn lenet_metadata_generation_weights_as_inputs() {
-        let model_path =
-            Path::new(env!("CARGO_MANIFEST_DIR")).join("../jstprove_remainder/models/lenet.onnx");
+        let model_path = Path::new(env!("CARGO_MANIFEST_DIR")).join("models/lenet.onnx");
         assert!(
             model_path.exists(),
             "missing test fixture: {}",
@@ -645,8 +643,7 @@ mod tests {
 
     #[test]
     fn bn254_adaptive_exponent_matches_safe_bound() {
-        let model_path =
-            Path::new(env!("CARGO_MANIFEST_DIR")).join("../jstprove_remainder/models/lenet.onnx");
+        let model_path = Path::new(env!("CARGO_MANIFEST_DIR")).join("models/lenet.onnx");
         assert!(
             model_path.exists(),
             "missing test fixture: {}",
@@ -678,8 +675,7 @@ mod tests {
 
     #[test]
     fn bn254_5_digit_precision() {
-        let model_path =
-            Path::new(env!("CARGO_MANIFEST_DIR")).join("../jstprove_remainder/models/lenet.onnx");
+        let model_path = Path::new(env!("CARGO_MANIFEST_DIR")).join("models/lenet.onnx");
         assert!(
             model_path.exists(),
             "missing test fixture: {}",
@@ -700,8 +696,7 @@ mod tests {
 
     #[test]
     fn bn254_8_digit_precision() {
-        let model_path =
-            Path::new(env!("CARGO_MANIFEST_DIR")).join("../jstprove_remainder/models/lenet.onnx");
+        let model_path = Path::new(env!("CARGO_MANIFEST_DIR")).join("models/lenet.onnx");
         assert!(
             model_path.exists(),
             "missing test fixture: {}",
@@ -722,8 +717,7 @@ mod tests {
 
     #[test]
     fn goldilocks_adaptive_exponent() {
-        let model_path =
-            Path::new(env!("CARGO_MANIFEST_DIR")).join("../jstprove_remainder/models/lenet.onnx");
+        let model_path = Path::new(env!("CARGO_MANIFEST_DIR")).join("models/lenet.onnx");
         assert!(
             model_path.exists(),
             "missing test fixture: {}",
@@ -754,8 +748,7 @@ mod tests {
 
     #[test]
     fn precision_exceeds_goldilocks_capacity() {
-        let model_path =
-            Path::new(env!("CARGO_MANIFEST_DIR")).join("../jstprove_remainder/models/lenet.onnx");
+        let model_path = Path::new(env!("CARGO_MANIFEST_DIR")).join("models/lenet.onnx");
         assert!(
             model_path.exists(),
             "missing test fixture: {}",

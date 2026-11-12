@@ -60,8 +60,8 @@ You provide an **ONNX** model and inputs; JSTprove handles **quantization**, **c
 
 ### High-level architecture
 
-* **Python package:** Thin PyO3 bindings exposing `Circuit`, `WitnessResult`, and `BatchResult` from Rust.
-* **Rust workspace:** Four crates (`jstprove_circuits`, `jstprove_io`, `jstprove_onnx`, `jstprove_remainder`) plus `jstprove_pyo3` (excluded from workspace). Two CLI binaries: `jstprove` (Expander backend) and `jstprove-remainder` (Remainder backend).
+* **Python package:** Thin PyO3 bindings exposing `holographic_setup_vk` from Rust.
+* **Rust workspace:** Three crates (`jstprove_circuits`, `jstprove_io`, `jstprove_onnx`) plus `jstprove_pyo3` (excluded from workspace). One CLI binary: `jstprove` (Expander backend).
 * **Circuit frontend:** [ECC](https://github.com/inference-labs-inc/ecc) Rust API for arithmetic circuits.
 * **Prover backend:** [Expander](https://github.com/PolyhedraZK/Expander) (GKR/sum-check prover/verification).
 
@@ -195,7 +195,6 @@ cargo build --release
 
 ```bash
 ./target/release/jstprove --help
-./target/release/jstprove-remainder --help
 ```
 
 You can now follow the **Quickstart** commands (compile -> witness -> prove -> verify).
@@ -208,14 +207,14 @@ You can now follow the **Quickstart** commands (compile -> witness -> prove -> v
 
 Demo paths:
 
-* ONNX model: `rust/jstprove_remainder/models/lenet.onnx`
+* ONNX model: `rust/jstprove_circuits/models/lenet.onnx`
 * Artifacts: `artifacts/lenet/*`
 
 1. **Compile** (using the Expander backend) -- produces a `CompiledCircuit` msgpack bundle
 
 ```bash
 jstprove msgpack_compile \
-  --onnx rust/jstprove_remainder/models/lenet.onnx \
+  --onnx rust/jstprove_circuits/models/lenet.onnx \
   -c artifacts/lenet/circuit.msgpack
 ```
 

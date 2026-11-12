@@ -19,7 +19,7 @@ fn model_name() -> String {
 
 fn model_path() -> std::path::PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../jstprove_remainder/models")
+        .join("models")
         .join(format!("{}.onnx", model_name()))
 }
 
@@ -27,7 +27,7 @@ fn bench_bn254(c: &mut Criterion) {
     let path = model_path();
     assert!(
         path.exists(),
-        "MODEL='{}' resolved to '{}' — ONNX file not found; set the MODEL env var to a model in jstprove_remainder/models/",
+        "MODEL='{}' resolved to '{}' — ONNX file not found; set the MODEL env var to a model in jstprove_circuits/models/",
         model_name(),
         path.display()
     );
@@ -112,7 +112,7 @@ fn bench_goldilocks(c: &mut Criterion) {
     let path = model_path();
     assert!(
         path.exists(),
-        "MODEL='{}' resolved to '{}' — ONNX file not found; set the MODEL env var to a model in jstprove_remainder/models/",
+        "MODEL='{}' resolved to '{}' — ONNX file not found; set the MODEL env var to a model in jstprove_circuits/models/",
         model_name(),
         path.display()
     );
@@ -196,7 +196,7 @@ fn bench_goldilocks_basefold(c: &mut Criterion) {
     let path = model_path();
     assert!(
         path.exists(),
-        "MODEL='{}' resolved to '{}' — ONNX file not found; set the MODEL env var to a model in jstprove_remainder/models/",
+        "MODEL='{}' resolved to '{}' — ONNX file not found; set the MODEL env var to a model in jstprove_circuits/models/",
         model_name(),
         path.display()
     );

@@ -55,7 +55,7 @@ def main():
         os.path.dirname(__file__),
         "..",
         "rust",
-        "jstprove_remainder",
+        "jstprove_circuits",
         "models",
         "mini_resnet.onnx",
     )
