@@ -8,15 +8,18 @@ on:
     paths:
       - "**/Cargo.toml"
       - "**/Cargo.lock"
+      - ".github/workflows/security.yml"
   pull_request:
     branches: ["main"]
     paths:
       - "**/Cargo.toml"
       - "**/Cargo.lock"
+      - ".github/workflows/security.yml"
 
 permissions:
   contents: read
   issues: write
+  checks: write
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -24,9 +27,13 @@ concurrency:
 
 jobs:
   rust-audit:
-    name: Rust Security Audit
+    name: Rust Security Audit (${{ matrix.dir }})
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        dir: [".", "rust/jstprove_pyo3", "rust/jstprove_zkvm"]
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
@@ -36,4 +43,4 @@ jobs:
       - uses: rustsec/audit-check@69366f33c96575abad1ee0dba8212993eecbe998 # v2.0.0
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          ignore: RUSTSEC-2025-0134
+          working-directory: ${{ matrix.dir }}

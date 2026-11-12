@@ -40,7 +40,7 @@ impl Circuit {
     fn compile(py: Python<'_>, model_path: &str, output_path: &str) -> PyResult<Circuit> {
         let model = model_path.to_string();
         let out = output_path.to_string();
-        py.allow_threads(move || {
+        py.detach(move || {
             jstprove_remainder::runner::compile::run(Path::new(&model), Path::new(&out), true, MODE)
         })
         .map_err(anyhow_to_pyerr)?;
@@ -65,7 +65,7 @@ impl Circuit {
         let model = self.model_path.clone();
         let input = input_path.to_string();
         let witness = witness_path.to_string();
-        py.allow_threads(move || {
+        py.detach(move || {
             jstprove_remainder::runner::witness::run(
                 Path::new(&model),
                 Path::new(&input),
@@ -85,7 +85,7 @@ impl Circuit {
         let model = self.model_path.clone();
         let witness = witness_path.to_string();
         let proof = proof_path.to_string();
-        py.allow_threads(move || {
+        py.detach(move || {
             jstprove_remainder::runner::prove::run(
                 Path::new(&model),
                 Path::new(&witness),
@@ -102,7 +102,7 @@ impl Circuit {
         let model = self.model_path.clone();
         let proof = proof_path.to_string();
         let input = input_path.to_string();
-        py.allow_threads(move || {
+        py.detach(move || {
             jstprove_remainder::runner::verify::run(
                 Path::new(&model),
                 Path::new(&proof),
@@ -118,7 +118,7 @@ impl Circuit {
         let model = self.model_path.clone();
         let manifest = manifest_path.to_string();
         let r = py
-            .allow_threads(move || {
+            .detach(move || {
                 jstprove_remainder::runner::batch::run_batch_witness(
                     Path::new(&model),
                     Path::new(&manifest),
@@ -138,7 +138,7 @@ impl Circuit {
         let model = self.model_path.clone();
         let manifest = manifest_path.to_string();
         let r = py
-            .allow_threads(move || {
+            .detach(move || {
                 jstprove_remainder::runner::batch::run_batch_prove(
                     Path::new(&model),
                     Path::new(&manifest),
@@ -158,7 +158,7 @@ impl Circuit {
         let model = self.model_path.clone();
         let manifest = manifest_path.to_string();
         let r = py
-            .allow_threads(move || {
+            .detach(move || {
                 jstprove_remainder::runner::batch::run_batch_verify(
                     Path::new(&model),
                     Path::new(&manifest),
@@ -176,9 +176,8 @@ impl Circuit {
     #[staticmethod]
     fn is_compatible(py: Python<'_>, model_path: &str) -> PyResult<(bool, Vec<String>)> {
         let path = model_path.to_string();
-        let result = py.allow_threads(move || {
-            jstprove_remainder::onnx::compat::is_compatible(Path::new(&path))
-        });
+        let result =
+            py.detach(move || jstprove_remainder::onnx::compat::is_compatible(Path::new(&path)));
         match result {
             Ok((compatible, issues)) => Ok((compatible, issues)),
             Err(e) => Ok((false, vec![format!("{:#}", e)])),
@@ -221,7 +220,7 @@ fn holographic_setup_vk(
     })?;
 
     let owned_bytes = circuit_bytes.to_vec();
-    py.allow_threads(move || setup_holographic_vk(config, &owned_bytes))
+    py.detach(move || setup_holographic_vk(config, &owned_bytes))
         .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("{e:?}")))
 }
 

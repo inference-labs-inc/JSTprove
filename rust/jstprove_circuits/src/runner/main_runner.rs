@@ -65,6 +65,8 @@ fn auto_reader(file: std::fs::File) -> Result<Box<dyn std::io::Read>, RunError> 
 #[global_allocator]
 static GLOBAL: &PeakMemAlloc<System> = &INSTRUMENTED_SYSTEM;
 
+const MAX_EXACT_F64_INT: u64 = 1 << f64::MANTISSA_DIGITS;
+
 fn get_witness_solver_path(input: &str) -> PathBuf {
     let path = Path::new(input);
     let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or(input);
@@ -1816,6 +1818,12 @@ fn flatten_rmpv_to_f64(val: &Value, out: &mut Vec<f64>) -> Result<(), RunError> 
             let i = n
                 .as_i64()
                 .ok_or_else(|| RunError::Deserialize("integer value out of i64 range".into()))?;
+            if i.unsigned_abs() > MAX_EXACT_F64_INT {
+                return Err(RunError::Deserialize(format!(
+                    "integer value {i} exceeds the exactly representable f64 range"
+                )));
+            }
+            #[allow(clippy::cast_precision_loss)]
             out.push(i as f64);
             Ok(())
         }

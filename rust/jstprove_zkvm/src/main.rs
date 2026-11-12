@@ -1,7 +1,7 @@
 #[allow(dead_code)]
 mod canonical;
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::Instant;
 
 use anyhow::{Context, Result};
@@ -34,7 +34,7 @@ enum Command {
     },
 }
 
-fn load_canonical(model_path: &PathBuf) -> Result<(CanonicalModel, Vec<u8>)> {
+fn load_canonical(model_path: &Path) -> Result<(CanonicalModel, Vec<u8>)> {
     let raw = std::fs::read(model_path).context("reading model file")?;
     let msgpack = decompress_model_bytes(&raw)?;
     let model = CanonicalModel::from_quantized_model_bytes(&msgpack)?;
@@ -68,7 +68,7 @@ fn decompress_model_bytes(raw: &[u8]) -> Result<Vec<u8>> {
             Ok(payload.to_vec())
         }
     } else if raw.len() >= 4 && raw[..4] == [0x28, 0xB5, 0x2F, 0xFD] {
-        Ok(zstd::decode_all(raw.as_ref())?)
+        Ok(zstd::decode_all(raw)?)
     } else {
         Ok(raw.to_vec())
     }
@@ -81,7 +81,7 @@ fn sha256_bytes(data: &[u8]) -> [u8; 32] {
     hasher.finalize().into()
 }
 
-fn cmd_prove(model_path: &PathBuf, target_dir: &PathBuf) -> Result<()> {
+fn cmd_prove(model_path: &Path, target_dir: &Path) -> Result<()> {
     let (_, model_bytes) = load_canonical(model_path)?;
 
     let input_hash = sha256_bytes(&model_bytes);
@@ -100,9 +100,8 @@ fn cmd_prove(model_path: &PathBuf, target_dir: &PathBuf) -> Result<()> {
     let now = Instant::now();
     let shared = guest::preprocess_shared_verify_compilation(&mut program)
         .context("shared preprocessing")?;
-    let prover_pp = guest::preprocess_prover_verify_compilation(shared.clone());
-    let verifier_setup = prover_pp.generators.to_verifier_setup();
-    let verifier_pp = guest::preprocess_verifier_verify_compilation(shared, verifier_setup, None);
+    let prover_pp = guest::preprocess_prover_verify_compilation(shared);
+    let verifier_pp = guest::verifier_preprocessing_from_prover_verify_compilation(&prover_pp);
     info!("Preprocessing: {:.2}s", now.elapsed().as_secs_f64());
 
     let prove_fn = guest::build_prover_verify_compilation(program, prover_pp);
@@ -118,28 +117,25 @@ fn cmd_prove(model_path: &PathBuf, target_dir: &PathBuf) -> Result<()> {
 
     info!("Verifying proof...");
     let now = Instant::now();
-    let valid = verify_fn(&model_bytes, output_hash, program_io.panic, proof);
+    verify_fn(&model_bytes, output_hash, program_io.panic, proof)
+        .map_err(|e| anyhow::anyhow!("compilation proof verification failed: {e:?}"))?;
     let verify_secs = now.elapsed().as_secs_f64();
     info!("Verify time: {:.2}s", verify_secs);
 
-    if valid {
-        info!("VALID: compilation proof verified");
-        let result = serde_json::json!({
-            "status": "valid",
-            "input_hash": hex::encode(input_hash),
-            "compilation_hash": hex::encode(output_hash),
-            "prove_time_s": prove_secs,
-            "verify_time_s": verify_secs,
-        });
-        println!("{}", serde_json::to_string_pretty(&result)?);
-    } else {
-        anyhow::bail!("compilation proof verification failed");
-    }
+    info!("VALID: compilation proof verified");
+    let result = serde_json::json!({
+        "status": "valid",
+        "input_hash": hex::encode(input_hash),
+        "compilation_hash": hex::encode(output_hash),
+        "prove_time_s": prove_secs,
+        "verify_time_s": verify_secs,
+    });
+    println!("{}", serde_json::to_string_pretty(&result)?);
 
     Ok(())
 }
 
-fn cmd_hash(model_path: &PathBuf) -> Result<()> {
+fn cmd_hash(model_path: &Path) -> Result<()> {
     let (_, model_bytes) = load_canonical(model_path)?;
     let hash = sha256_bytes(&model_bytes);
     println!("{}", hex::encode(hash));

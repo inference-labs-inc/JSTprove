@@ -5,11 +5,11 @@ edition = "2021"
 license = "MIT OR Apache-2.0"
 
 [dependencies]
-frontend = { git = "https://github.com/inference-labs-inc/Remainder_CE.git", rev = "06a5f406" }
-remainder = { git = "https://github.com/inference-labs-inc/Remainder_CE.git", rev = "06a5f406" }
-shared-types = { git = "https://github.com/inference-labs-inc/Remainder_CE.git", rev = "06a5f406" }
-ligero = { git = "https://github.com/inference-labs-inc/Remainder_CE.git", rev = "06a5f406" }
-hyrax = { git = "https://github.com/inference-labs-inc/Remainder_CE.git", rev = "06a5f406" }
+frontend = { git = "https://github.com/inference-labs-inc/Remainder_CE.git", rev = "3d4e9f24376a3256f162d9cf43e2da35e3ca1e0e" }
+remainder = { git = "https://github.com/inference-labs-inc/Remainder_CE.git", rev = "3d4e9f24376a3256f162d9cf43e2da35e3ca1e0e" }
+shared-types = { git = "https://github.com/inference-labs-inc/Remainder_CE.git", rev = "3d4e9f24376a3256f162d9cf43e2da35e3ca1e0e" }
+ligero = { git = "https://github.com/inference-labs-inc/Remainder_CE.git", rev = "3d4e9f24376a3256f162d9cf43e2da35e3ca1e0e" }
+hyrax = { git = "https://github.com/inference-labs-inc/Remainder_CE.git", rev = "3d4e9f24376a3256f162d9cf43e2da35e3ca1e0e" }
 
 jstprove-onnx = { path = "../jstprove_onnx" }
 ndarray = { version = "0.15.6", features = ["serde"] }
