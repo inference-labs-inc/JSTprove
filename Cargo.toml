@@ -72,12 +72,12 @@ expander_compiler = { path = "compiler/expander_compiler" }
 circuit-std-rs = { path = "compiler/circuit-std-rs" }
 
 # --- external ---
-ark-bls12-381 = "0.4.0"
-ark-bn254 = "0.4.0"
-ark-ec = "0.4.0"
-ark-ff = "0.4.0"
-ark-serialize = "0.4.0"
-ark-std = "0.4.0"
+ark-bls12-381 = "0.6.0"
+ark-bn254 = "0.6.0"
+ark-ec = "0.6.0"
+ark-ff = "0.6.0"
+ark-serialize = "0.6.0"
+ark-std = "0.6.0"
 axum = "0.7"
 big-int = "7.0.0"
 bytes = "1.6.0"
@@ -87,7 +87,6 @@ clap = { version = "4.5", features = ["derive"] }
 console = "0.15"
 criterion = { version = "0.5", features = ["html_reports"] }
 csv = "1.1"
-derivative = "2.2.0"
 env_logger = "0.11.3"
 ethnum = "1.5.0"
 halo2curves = { git = "https://github.com/PolyhedraZK/halo2curves", default-features = false, features = ["bits"] }

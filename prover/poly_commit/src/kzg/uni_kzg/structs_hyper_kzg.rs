@@ -1,7 +1,6 @@
 use std::ops::{Index, IndexMut};
 
 use arith::ExtensionField;
-use derivative::Derivative;
 use gkr_engine::Transcript;
 use halo2curves::{ff::Field, pairing::Engine};
 use itertools::izip;
@@ -9,8 +8,7 @@ use serdes::ExpSerde;
 
 use crate::*;
 
-#[derive(Clone, Debug, Derivative, ExpSerde)]
-#[derivative(Default(bound = ""))]
+#[derive(Clone, Debug, ExpSerde)]
 pub struct HyperKZGExportedLocalEvals<E: Engine>
 where
     E::Fr: ExpSerde,
@@ -51,8 +49,7 @@ where
     }
 }
 
-#[derive(Clone, Debug, Derivative, ExpSerde)]
-#[derivative(Default(bound = ""))]
+#[derive(Clone, Debug, ExpSerde)]
 pub struct HyperUniKZGOpening<E: Engine>
 where
     E::Fr: ExpSerde,
@@ -64,8 +61,7 @@ where
     pub quotient_delta_x_commitment: E::G1Affine,
 }
 
-#[derive(Clone, Debug, Derivative, ExpSerde)]
-#[derivative(Default(bound = ""))]
+#[derive(Clone, Debug, ExpSerde)]
 pub(crate) struct HyperKZGLocalEvals<E: Engine>
 where
     E::Fr: ExpSerde,
@@ -224,8 +220,7 @@ where
     }
 }
 
-#[derive(Clone, Debug, Derivative, ExpSerde)]
-#[derivative(Default(bound = ""))]
+#[derive(Clone, Debug, ExpSerde)]
 pub struct HyperKZGAggregatedEvals<E: Engine>
 where
     E::Fr: ExpSerde,
@@ -278,5 +273,59 @@ where
         self.beta_y2_evals.append_to_transcript(fs_transcript);
         self.pos_beta_y_evals.append_to_transcript(fs_transcript);
         self.neg_beta_y_evals.append_to_transcript(fs_transcript);
+    }
+}
+
+impl<E: Engine> Default for HyperKZGExportedLocalEvals<E>
+where
+    E::Fr: ExpSerde,
+{
+    fn default() -> Self {
+        Self {
+            beta_x2_eval: E::Fr::default(),
+            pos_beta_x_evals: Vec::new(),
+            neg_beta_x_evals: Vec::new(),
+        }
+    }
+}
+
+impl<E: Engine> Default for HyperUniKZGOpening<E>
+where
+    E::Fr: ExpSerde,
+    E::G1Affine: Default + ExpSerde,
+{
+    fn default() -> Self {
+        Self {
+            folded_oracle_commitments: Vec::new(),
+            evals_at_x: HyperKZGExportedLocalEvals::default(),
+            beta_x_commitment: E::G1Affine::default(),
+            quotient_delta_x_commitment: E::G1Affine::default(),
+        }
+    }
+}
+
+impl<E: Engine> Default for HyperKZGLocalEvals<E>
+where
+    E::Fr: ExpSerde,
+{
+    fn default() -> Self {
+        Self {
+            beta2_evals: Vec::new(),
+            pos_beta_evals: Vec::new(),
+            neg_beta_evals: Vec::new(),
+        }
+    }
+}
+
+impl<E: Engine> Default for HyperKZGAggregatedEvals<E>
+where
+    E::Fr: ExpSerde,
+{
+    fn default() -> Self {
+        Self {
+            beta_y2_evals: HyperKZGExportedLocalEvals::default(),
+            pos_beta_y_evals: HyperKZGExportedLocalEvals::default(),
+            neg_beta_y_evals: HyperKZGExportedLocalEvals::default(),
+        }
     }
 }
